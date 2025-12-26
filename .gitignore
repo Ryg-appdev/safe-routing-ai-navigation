@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# API Keys (iOS)
+ios/**/GoogleService-Info.plist
+ios/**/Secrets.xcconfig
+
+# Build outputs
+dist/
+build/
+.output/
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Xcode
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+ios/**/.build/
+
+# Logs
+*.log
