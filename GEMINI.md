@@ -15,9 +15,9 @@
 - **ターゲット**: Google Cloud Japan AI Hackathon Vol.4 審査員
 - **プラットフォーム**: iOS (SwiftUI), Backend (Firebase Genkit)
 - **技術スタック**: 
-  - **Frontend**: Swift, SwiftUI, Google Maps SDK for iOS
-  - **Backend**: TypeScript, Firebase Genkit, Google Cloud Functions
-  - **AI**: Gemini 3 (via Genkit / Vertex AI)
+  - **Frontend**: Flutter (Dart), google_maps_flutter
+  - **Backend**: Python, Google ADK, Cloud Run
+  - **AI**: Vertex AI (Gemini)
   - **External APIs**:
     - **Routing**: Google Routes API
     - **Weather**: OpenWeatherMap API
