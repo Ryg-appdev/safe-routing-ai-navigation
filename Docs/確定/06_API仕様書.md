@@ -5,36 +5,36 @@
 ```mermaid
 sequenceDiagram
     participant iOS as 📱 iOS App
-    participant CF as ☁️ Cloud Functions
+    participant CR as ☁️ Cloud Run
     participant W as 🌧️ OpenWeatherMap
     participant H as 🗺️ ハザードマップ
     participant R as 🛣️ Google Routes
     participant G3 as 🤖 Gemini 3
 
-    iOS->>CF: POST /findSafeRoute
-    activate CF
+    iOS->>CR: POST /findSafeRoute
+    activate CR
     
     par 並列データ取得
-        CF->>W: 気象データ取得
-        W-->>CF: rain, wind
-        CF->>H: 浸水リスク取得
-        H-->>CF: flood_depth
+        CR->>W: 気象データ + 警報取得
+        W-->>CR: rain, wind, alerts
+        CR->>H: ハザードデータ取得
+        H-->>CR: flood, landslide, tsunami
     end
     
-    CF->>G3: リスク評価
-    G3-->>CF: riskScore, avoidanceTags
+    CR->>G3: リスク評価
+    G3-->>CR: riskScore, avoidanceTags
     
-    CF->>R: computeRoutes (alternatives: true)
-    R-->>CF: routes[]
+    CR->>R: computeRoutes (alternatives: true)
+    R-->>CR: routes[]
     
-    CF->>G3: ナレーション生成
-    G3-->>CF: narrative
+    CR->>G3: ナレーション生成
+    G3-->>CR: narrative
     
-    CF-->>iOS: RouteResponse
-    deactivate CF
+    CR-->>iOS: RouteResponse
+    deactivate CR
 ```
 
-## 2. Backend Endpoints (Cloud Functions)
+## 2. Backend Endpoints (Cloud Run)
 
 ### `POST /findSafeRoute`
 - **概要**: メインの経路探索API。
@@ -44,7 +44,8 @@ sequenceDiagram
     {
       "origin": {"lat": 35.6812, "lng": 139.7671},
       "destination": {"lat": 35.6591, "lng": 139.7006},
-      "mode": "EMERGENCY"
+      "mode": "EMERGENCY",
+      "alert_type": "TSUNAMI"
     }
     ```
 - **Response (Success)**:
@@ -54,16 +55,16 @@ sequenceDiagram
         {
           "polyline": "encoded_polyline_string",
           "summary": "高台経由ルート",
-          "durationSeconds": 900,
-          "safetyScore": 85,
-          "warnings": ["浸水エリア回避"]
+          "duration_seconds": 900,
+          "safety_score": 85,
+          "warnings": ["津波浸水エリア回避"]
         }
       ],
-      "narrative": "大雨を検知しました。高台を経由する安全なルートを設定しました。",
-      "thinkingProcessLog": ["Fetching weather...", "Risk: HIGH", "Rerouting..."],
-      "riskAssessment": {
+      "narrative": "津波警報が発令されています。高台を経由する安全なルートを設定しました。",
+      "thinking_process_log": ["Fetching weather...", "Alert: TSUNAMI", "Rerouting..."],
+      "risk_assessment": {
         "level": "HIGH",
-        "factors": ["Rain > 50mm/h", "Flood Risk"]
+        "factors": ["Tsunami Warning", "Coastal Area"]
       }
     }
     ```
@@ -72,7 +73,7 @@ sequenceDiagram
     {
       "routes": [...],
       "narrative": "一部データの取得に失敗しましたが、安全なルートを設定しました。",
-      "thinkingProcessLog": ["[Warning] Weather API timeout.", "Using cached data."],
+      "thinking_process_log": ["[Warning] Weather API timeout.", "Using cached data."],
       "error": {
         "code": "PARTIAL_DATA_FAILURE",
         "message": "OpenWeatherMap API timed out."
@@ -85,48 +86,26 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant iOS as 📱 iOS App
-    participant CF as ☁️ Cloud Functions
+    participant CR as ☁️ Cloud Run
     participant SV as 📷 Street View
     participant G3 as 🤖 Gemini Vision
 
-    iOS->>CF: POST /analyzeRouteSafety
+    iOS->>CR: POST /analyzeRouteSafety
     loop 各地点
-        CF->>SV: GET image
-        SV-->>CF: 画像データ
-        CF->>G3: 安全性解析
-        G3-->>CF: score, tags
-        CF-->>iOS: SSE push
+        CR->>SV: GET image
+        SV-->>CR: 画像データ
+        CR->>G3: 安全性解析
+        G3-->>CR: score, tags
+        CR-->>iOS: SSE push
     end
 ```
 
 - **概要**: 指定された座標リストの「視覚的安全性」を解析する。
 - **Timeout**: 各地点につき最大3秒。失敗時はスキップ。
-- **Request**:
-    ```json
-    {
-      "points": [{"lat": 35.658, "lng": 139.701}, ...]
-    }
-    ```
-- **Response** (Stream/JSON):
-    ```json
-    [
-      {"id": 1, "score": 80, "tags": ["Bright", "Wide Road"]},
-      {"id": 2, "score": null, "tags": [], "error": "StreetView unavailable"}
-    ]
-    ```
 
 ## 3. External API Usage
 
 ### Google Routes API (`v2.computeRoutes`)
-
-```mermaid
-flowchart LR
-    A[Request] --> B[computeRoutes]
-    B --> C{成功?}
-    C -->|Yes| D[routes[] 返却]
-    C -->|No| E[Mock Route 返却]
-```
-
 - **Method**: POST
 - **FieldMask**: `routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline`
 - **Note**: `X-Goog-FieldMask` ヘッダーが必須。
@@ -135,7 +114,8 @@ flowchart LR
 ### OpenWeatherMap (One Call 3.0)
 - **Endpoint**: `https://api.openweathermap.org/data/3.0/onecall`
 - **Params**: `lat`, `lon`, `exclude=minutely,daily`, `appid`
-- **Fallback**: 失敗時はキャッシュデータを使用。キャッシュもない場合は `rain: 0, wind: 0` として処理継続。
+- **重要**: `alerts` フィールドで気象警報を取得（自動モード切替に使用）。
+- **Fallback**: 失敗時はキャッシュデータを使用。
 
 ### Google Street View Static API
 - **Endpoint**: `https://maps.googleapis.com/maps/api/streetview`
