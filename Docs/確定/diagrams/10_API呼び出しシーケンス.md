@@ -2,32 +2,32 @@
 
 ```mermaid
 sequenceDiagram
-    participant iOS as 📱 iOS App
-    participant CF as ☁️ Cloud Functions
+    participant App as 📱 Flutter App
+    participant CR as ☁️ Cloud Run
     participant W as 🌧️ OpenWeatherMap
     participant H as 🗺️ ハザードマップ
     participant R as 🛣️ Google Routes
-    participant G3 as 🤖 Gemini 3
+    participant G3 as 🤖 Vertex AI
 
-    iOS->>CF: POST /findSafeRoute
-    activate CF
+    App->>CR: POST /findSafeRoute
+    activate CR
     
     par 並列データ取得
-        CF->>W: 気象データ取得
-        W-->>CF: rain, wind
-        CF->>H: 浸水リスク取得
-        H-->>CF: flood_depth
+        CR->>W: 気象データ + 警報取得
+        W-->>CR: rain, wind, alerts
+        CR->>H: ハザードデータ取得
+        H-->>CR: flood, landslide, tsunami
     end
     
-    CF->>G3: リスク評価
-    G3-->>CF: riskScore, avoidanceTags
+    CR->>G3: リスク評価
+    G3-->>CR: riskScore, avoidanceTags
     
-    CF->>R: computeRoutes (alternatives: true)
-    R-->>CF: routes[]
+    CR->>R: computeRoutes (alternatives: true)
+    R-->>CR: routes[]
     
-    CF->>G3: ナレーション生成
-    G3-->>CF: narrative
+    CR->>G3: ナレーション生成
+    G3-->>CR: narrative
     
-    CF-->>iOS: RouteResponse
-    deactivate CF
+    CR-->>App: RouteResponse
+    deactivate CR
 ```

@@ -4,10 +4,9 @@
 ```mermaid
 flowchart LR
     subgraph 並列取得
-        W[OpenWeatherMap] --> |rain, wind| CTX
-        H[ハザードマップ] --> |flood_depth| CTX
+        W[OpenWeatherMap] --> |rain, alerts| CTX
+        H[ハザードマップ] --> |flood, landslide, tsunami| CTX
         P[警視庁統計] --> |crime_rate| CTX
-        M[Mock事故データ] --> |accidents| CTX
     end
     CTX[Context Object] --> A2[Risk Evaluator]
 ```
@@ -15,7 +14,7 @@ flowchart LR
 ## Risk Evaluator
 ```mermaid
 flowchart TD
-    CTX[Context + Mode] --> G3[Gemini 3]
+    CTX[Context + Mode + AlertType] --> G3[Vertex AI Gemini]
     G3 --> |JSON Output| RS{Risk Score}
     RS -->|0-30| LOW[LOW リスク]
     RS -->|31-70| MED[MEDIUM リスク]
@@ -60,7 +59,7 @@ flowchart LR
     P -->|Normal| C[Concierge<br/>丁寧・安心]
     P -->|Emergency| T[Tactical<br/>命令形・短潔]
     
-    C --> G3[Gemini 3]
+    C --> G3[Vertex AI Gemini]
     T --> G3
     G3 --> N[ナレーション生成]
 ```

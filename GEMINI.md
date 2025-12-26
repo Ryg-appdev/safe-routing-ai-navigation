@@ -11,9 +11,9 @@
 
 ## プロジェクト概要
 - **プロダクト名**: Situation-Adaptive Safe Routing AI Navigation
-- **コンセプト**: 「いつもの移動は“安心寄り”に、非常時は“生存寄り”に切り替わるナビ」
+- **コンセプト**: 「いつもの移動は"安心寄り"に、非常時は"生存寄り"に切り替わるナビ」
 - **ターゲット**: Google Cloud Japan AI Hackathon Vol.4 審査員
-- **プラットフォーム**: iOS (SwiftUI), Backend (Firebase Genkit)
+- **プラットフォーム**: Flutter (iOS / Android), Backend (Google ADK / Cloud Run)
 - **技術スタック**: 
   - **Frontend**: Flutter (Dart), google_maps_flutter
   - **Backend**: Python, Google ADK, Cloud Run
@@ -25,26 +25,26 @@
     - **Disaster**: 国土交通省ハザードマップ (Tile/API)
 
 ## 主要機能（MVP）
-1. **モード切替** - 日常（青）⇔ 非常時（赤）のトグルスイッチ
+1. **モード切替** - 日常（青）⇔ 非常時（赤）のトグルスイッチ + **気象警報による自動切替**
 2. **防犯ヒートマップ（日常）** - 警視庁オープンデータに基づく安全エリア可視化
-3. **リスク回避ルート探索（非常時）** - 大雨・浸水・（擬似）事故を回避するルート提案
-4. **AIナレーション** - Gemini 3によるルート選択理由の解説
+3. **リスク回避ルート探索（非常時）** - 浸水・土砂災害・津波を回避するルート提案
+4. **AIナレーション** - Vertex AI (Gemini) によるルート選択理由の解説
 5. **思考ログ表示** - AIの推論プロセスを可視化（デモ映え機能）
 
 ## ディレクトリ構成
 ```
 /
-├── backend/            # Firebase Genkit (Agentic AI Layer)
-│   ├── src/            # TypeScript Source
-│   │   ├── flows/      # Genkit Flows (Agents)
-│   │   └── lib/        # Shared Utilities
-│   └── package.json
-├── ios/                # iOS App (SwiftUI)
-│   ├── App/            # App Entry Point
-│   ├── Views/          # SwiftUI Views
-│   ├── ViewModels/     # Presentation Logic
-│   ├── Services/       # API Clients, Location Manager
-│   └── Models/         # Data Models (Codable)
+├── backend/            # Google ADK (Python)
+│   ├── agents/         # Agent Modules
+│   ├── services/       # External API Clients
+│   └── main.py         # Cloud Run Entry Point
+├── flutter_app/        # Flutter App (iOS / Android)
+│   ├── lib/
+│   │   ├── screens/    # UI Screens
+│   │   ├── providers/  # State Management (Riverpod)
+│   │   ├── services/   # API Clients
+│   │   └── models/     # Data Models
+│   └── pubspec.yaml
 └── Docs/               # プロジェクトドキュメント
     ├── 確定/           # 仕様書・設計書
     └── 計画/           # 実装計画・ログ
@@ -61,22 +61,18 @@
 - **1タスク・1実装・1確認**の徹底
 - 既存コードのスタイル・パターンに合わせる
 
-### Backend (Genkit / TypeScript)
-- TypeScriptの型システムを最大限活用する（`any` 禁止）
-- Zodスキーマを使用して入出力を厳密に定義する
-- エージェント（Flow）は単一責任の原則に従って分割する
+### Backend (Python / Google ADK)
+- Pythonの型ヒントを最大限活用する
+- Pydanticを使用して入出力を厳密に定義する
+- エージェント（Agent）は単一責任の原則に従って分割する
 
-### Frontend (iOS / Swift)
-- MVVMアーキテクチャを採用する
-- Google Maps SDKの実装は `UIViewRepresentable` でラップし、SwiftUIライフサイクルと適切に連携させる
-- モードによるテーマ切り替え（青/赤）は `EnvironmentObject` または `ThemeManager` で一元管理する
-### Frontend (iOS / Swift)
-- MVVMアーキテクチャを採用する
-- Google Maps SDKの実装は `UIViewRepresentable` でラップし、SwiftUIライフサイクルと適切に連携させる
-- モードによるテーマ切り替え（青/赤）は `EnvironmentObject` または `ThemeManager` で一元管理する
+### Frontend (Flutter / Dart)
+- MVVMアーキテクチャを採用する（Provider / Riverpod）
+- google_maps_flutter でマップを表示
+- モードによるテーマ切り替え（青/赤）は `ThemeProvider` で一元管理する
 
 ## セキュリティ・AI倫理 (Important)
-- **APIキー管理**: APIキーは絶対にコードにハードコードしないこと。必ず環境変数 (`.env`, `Info.plist` の注入フロー) を使用する。
+- **APIキー管理**: APIキーは絶対にコードにハードコードしないこと。必ず環境変数 (`.env`) を使用する。
   - **Git混入防止**: `.env` やキーを含むファイルは必ず `.gitignore` に追加する。
 - **AI免責 (Disclaimer)**: ナビゲーション結果はあくまで参考情報であり、最終的な判断（特に避難時）はユーザー自身の判断および公式情報に従うことをUI上で明示する。
 - **ハルシネーション対策**: 存在しないルートを案内しないよう、Geminiの出力は可能な限りGoogle Routesの正規化されたデータに基づいて構成する。
@@ -135,26 +131,20 @@
 - **Normal**: 標準（Standard）または明るいカスタムスタイル
 - **Emergency**: ダークモードベース、建物等のノイズを減らし、ルートと危険エリアを強調するスタイル
 
-## よく使うパターン (Genkit)
+## よく使うパターン (Google ADK / Python)
 
-### Flow定義
-```typescript
-import { genkit, z } from 'genkit';
-import { googleAI, gemini15Flash } from '@genkit-ai/googleai';
+### Agent定義
+```python
+from google.adk import Agent
 
-const ai = genkit({
-  plugins: [googleAI()],
-  model: gemini15Flash,
-});
-
-export const myFlow = ai.defineFlow(
-  {
-    name: 'myFlow',
-    inputSchema: z.object({ input: z.string() }),
-  },
-  async (input) => {
-    // Logic here
-    return { result: "ok" };
-  }
-);
+# Risk Evaluator Agent
+risk_evaluator = Agent(
+    name="risk_evaluator",
+    model="gemini-2.0-flash",
+    instruction="""
+    You are a Disaster Risk Assessment Specialist.
+    Evaluate safety based on weather, hazard, and crime data.
+    Output JSON with riskScore (0-100) and detectedRisks array.
+    """
+)
 ```

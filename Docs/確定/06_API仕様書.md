@@ -4,14 +4,14 @@
 
 ```mermaid
 sequenceDiagram
-    participant iOS as 📱 iOS App
+    participant App as 📱 Flutter App
     participant CR as ☁️ Cloud Run
     participant W as 🌧️ OpenWeatherMap
     participant H as 🗺️ ハザードマップ
     participant R as 🛣️ Google Routes
-    participant G3 as 🤖 Gemini 3
+    participant G3 as 🤖 Vertex AI
 
-    iOS->>CR: POST /findSafeRoute
+    App->>CR: POST /findSafeRoute
     activate CR
     
     par 並列データ取得
@@ -30,7 +30,7 @@ sequenceDiagram
     CR->>G3: ナレーション生成
     G3-->>CR: narrative
     
-    CR-->>iOS: RouteResponse
+    CR-->>App: RouteResponse
     deactivate CR
 ```
 
@@ -85,18 +85,18 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant iOS as 📱 iOS App
+    participant App as 📱 Flutter App
     participant CR as ☁️ Cloud Run
     participant SV as 📷 Street View
-    participant G3 as 🤖 Gemini Vision
+    participant G3 as 🤖 Vertex AI Vision
 
-    iOS->>CR: POST /analyzeRouteSafety
+    App->>CR: POST /analyzeRouteSafety
     loop 各地点
         CR->>SV: GET image
         SV-->>CR: 画像データ
         CR->>G3: 安全性解析
         G3-->>CR: score, tags
-        CR-->>iOS: SSE push
+        CR-->>App: SSE push
     end
 ```
 
