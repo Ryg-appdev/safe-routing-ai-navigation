@@ -1,0 +1,13 @@
+# Core
+google-genai>=0.2.0  # Google Gen AI SDK for Gemini 3
+python-dotenv
+pydantic
+
+# Utilities
+requests
+googlemaps>=4.10.0  # Polyline decoding & utilities
+geopy>=2.4.0  # Distance calculation for resampling
+
+# Web Framework (Cloud Run)
+functions-framework>=3.0.0
+flask>=3.0.0
