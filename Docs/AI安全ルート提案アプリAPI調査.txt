@@ -1,0 +1,174 @@
+﻿Zenn × Google Cloud ハッカソン (第4回) 向け: AI駆動型安全ルート提案エージェント構築のための包括的技術調査レポート
+1. エグゼクティブサマリー
+デジタル地図とナビゲーション技術の進化は、移動の効率性を劇的に向上させましたが、依然として「個人の安全」という定性的な側面においては未解決の課題を残しています。特に、都市部における夜間の単独歩行や、子供・高齢者の移動におけるリスク管理は、最短経路や最安経路といった従来の最適化指標では捉えきれない複雑な変数を内包しています。ZennとGoogle Cloudが共催する第4回ハッカソンは、「Agentic AI（自律的AIエージェント）」をテーマに掲げており 1、これは単なる情報の検索や提示を超え、ユーザーの代理人として思考し、計画し、行動するシステムの構築を求めています。本レポートは、このハッカソンのテーマに対し、「AIによる安全なルート提案アプリ」というコンセプトがいかにして適合し、かつ技術的に実装可能であるかを、利用可能なAPI、オープンデータ、そして最新のAIアーキテクチャの観点から包括的に分析したものです。
+提案するアプリケーションは、単に過去の犯罪統計を地図上にマッピングするだけの静的なツールではありません。Google Maps Platformが提供する膨大な地理空間データ（経路、場所、ストリートビュー、環境データ）を、Gemini 3という最新鋭のマルチモーダルAIモデル 2 によってリアルタイムに解析し、物理的な環境の「安全性」を多角的にスコアリングする自律型エージェントシステムです。例えば、Street View Static APIから取得した画像データをGeminiの視覚認識能力で解析し、街灯の有無や視界の遮蔽物を判定することや、Solar APIの建物データを用いて都市峡谷による夜間の暗さを推論するといった、従来のナビゲーションアプリにはない「環境監査」機能を備えます。
+さらに、本レポートでは、ハッカソンの評価基準である「課題発見」「アイデア」「実装」 1 に深く刺さるよう、日本の固有事情（警察庁のオープンデータ、個人情報保護法、防犯灯の設置状況など）を考慮したデータ統合戦略を提示します。また、Google CloudのAgent Development Kit (ADK) 3 を用いたマルチエージェントアーキテクチャの設計指針を示し、開発者が短期間で高品質なプロトタイプを構築し、Flutter賞やFirebase賞といった特別賞 1 を狙うための具体的な技術選定についても詳述します。本稿は、参加者が「2025年の最も大きなチャレンジ」 1 として、社会課題解決型のAIエージェントを実装するための羅針盤となることを目的としています。
+2. ハッカソン戦略と「Agentic AI」への適応
+2.1 テーマの脱構築：「チャットボット」から「エージェント」へ
+第4回ハッカソンの核心的テーマである「Agentic AI（エージェント型AI）」は、従来の生成AIアプリケーション開発とは一線を画すパラダイムシフトを要求しています。これまでのハッカソンで見られたような、ユーザーの質問に対してデータベースを検索して回答を生成するだけのRAG（検索拡張生成）システムや、単純なチャットボットでは、今回の評価基準において高いスコアを獲得することは困難であると予測されます 4。
+「エージェント」とは、環境を認識し、自律的に目標を設定し、道具（ツール）を使用してタスクを遂行する主体のことを指します。安全ルート提案アプリの文脈において、これは以下のような振る舞いの違いとして現れます。
+* 従来のアプリ（受動的）: ユーザーが「ここからそこまで安全に行きたい」と入力すると、犯罪発生率が低いエリアを通るルートを表示する。
+* エージェント型アプリ（能動的・自律的）: ユーザーの「安全に帰りたい」という意図に対し、エージェントはまず「現在は夜間ですが、明るい大通りを優先しますか？それとも距離を優先しますか？」と文脈を確認するための対話を行います。その後、エージェントは自律的に複数のルート候補を生成し、それぞれのルートに対して「街灯の確認」「最近の不審者情報の照会」「交番の開所状況の確認」といったサブタスクを計画・実行します。最終的に、「ルートAは最短ですが、中間地点の公園周辺の街灯が少なく視認性が悪いため、3分長くかかりますが24時間営業の店舗が多く明るいルートBを推奨します」といった、推論過程に基づいた提案を行います。
+この「推論（Reasoning）」「計画（Planning）」「記憶（Memory）」 1 という要素をシステムに組み込むことが、今回のハッカソンにおける最大の差別化要因となります。特にGemini 3モデルは、高度な推論能力と「思考の署名（Thought Signatures）」 5 と呼ばれる内部思考プロセスを出力する機能を備えており、これを活用することでエージェントの透明性と信頼性を担保することが可能です。
+2.2 評価基準に基づく戦略的技術選定
+ハッカソンの評価基準 1 は「課題発見」「アイデア」「実装」の3点に加え、特定の技術スタック（Flutter, Firebase, Android）に対するインセンティブ賞が設けられています。これらを満たすための最適な構成は以下の通りです。
+
+
+評価軸
+	戦略的アプローチ
+	推奨技術スタック
+	課題発見
+	既存のナビアプリが「効率性」に偏重し、「個人の安全性（特に弱者）」を軽視している現状を指摘。「ラストワンマイルの恐怖」を解決課題とする。
+	統計データ（警察庁オープンデータ 6）、ユーザーヒアリング
+	アイデア
+	単なる統計データの可視化ではなく、AIの「目」と「推論」を使った動的なリスク評価。Solar APIを「影（暗さ）」の判定に使うなどのAPIの創造的転用。
+	Gemini 3 Pro (Multimodal Reasoning), Solar API, Street View Static API
+	実装
+	高速でスケーラブルなエージェント基盤。レイテンシを抑えた並列処理と、モバイルでの滑らかな体験。
+	Google Cloud Run (Backend), Vertex AI, Agent Development Kit (ADK)
+	特別賞
+	クロスプラットフォーム対応とデータ永続化。
+	Flutter (Frontend), Firebase Firestore (Database), Android (Target Device)
+	特に、Agent Development Kit (ADK) 3 の採用は必須と言えます。Googleが提供するこのフレームワークは、AIモデルと外部ツール（Google Maps APIなど）を接続し、エージェントの思考ループを管理するための標準的な実装パターンを提供しています。ADKを使用することで、スクラッチ開発に比べて大幅に工数を削減し、エージェントの「知能」部分の実装に注力することが可能になります。
+3. 地理空間基盤: Google Maps Platform API の深層分析
+安全なルートを計算するためには、物理世界をデジタルデータとして正確に把握する必要があります。Google Maps Platformは、ナビゲーション、場所情報、環境データなど多岐にわたるAPIを提供しており、これらをエージェントの「感覚器官」として機能させることが重要です。以下に、本アプリケーションにおいて核となるAPIの機能と、安全分析への応用方法を詳述します。
+3.1 Routes API: 経路探索のバックボーン
+従来のDirections APIの後継である Routes API (Compute Routes v2) 8 は、エージェントが基本となる経路候補を生成するために不可欠です。
+* 代替経路の生成 (computeAlternativeRoutes): 安全なルートを提案するためには、比較対象となる複数の選択肢が必要です。このパラメータを true に設定することで、エージェントは「最短経路」以外に最大3つの代替ルートを取得できます 8。エージェントはこれら全てのルートに対して安全性評価を行い、最適なものを選択します。
+* ポリラインの品質と分解: APIは経路形状を高精度のポリラインとして返します 9。安全性分析においては、ルート全体を一つの単位として評価するのではなく、ポリラインを一定間隔（例：50メートルごと）のセグメントに分解し、セグメントごとのリスクを積算するアプローチが有効です。これにより、「全体的には安全だが、特定の交差点だけ極めて危険」といった局所的なリスクを検出できます。
+* 交通状況の利用 (extraComputations): TRAFFIC_ON_POLYLINE を指定することで、経路上の交通流データを取得できます 10。歩行者にとって、夜間の人通りのなさはリスク要因となり得ます。車両の交通量が多い道路（主要幹線道路）は、一般的に街灯が整備され、沿道の店舗も営業している可能性が高いため、交通量データを「人の目（Natural Surveillance）」の代理変数として利用することが可能です。
+* 二輪車ルートの応用: travelMode に TWO_WHEELER 10 を指定することで、車では通れないが徒歩では可能な路地を含むルートが取得できる場合があります。ただし、安全性重視の観点からは、あえて DRIVE モードの経路（大通り中心）を徒歩ルートのベースとして採用し、歩道の有無を確認するというロジックも検討に値します。
+3.2 Places API (New): 「セーフヘイブン（安全地帯）」のネットワーク化
+Places API (New) 11 は、ルート周辺の施設情報を取得し、緊急時に逃げ込める場所や、人目のある場所（セーフヘイブン）を特定するために使用します。
+* 特定タイプのフィルタリング: 安全性スコアを算出するために、以下のタイプを含む施設を重点的に検索します 11。
+   * police (警察署、交番): 日本の都市部においては、交番の存在は心理的・物理的な安全の拠り所です。
+   * convenience_store (コンビニエンスストア): 24時間営業であり、明るい照明と店員の存在が防犯効果を持ちます。
+   * hospital, fire_station (病院、消防署): 緊急時の対応拠点となります。
+   * train_station (駅): 人通りが多く、照明や監視カメラが整備されています。
+* フィールドマスキングによる最適化: コストとレスポンス速度を最適化するため、必要なフィールド（id, location, types, businessStatus, wheelchairAccessibleEntrance）のみを指定してリクエストを行います 11。
+* バリアフリー情報の活用: wheelchairAccessibleEntrance（車椅子対応の入り口） 12 の有無は、間接的にその場所の歩道の広さや段差の少なさを示唆します。ベビーカー利用者や高齢者にとっては、物理的な歩きやすさも「安全」の重要な構成要素であり、このデータをスコアリングに組み込むことは「課題発見」の観点で高い評価につながります。
+* Grounding with Google Maps: Gemini 3と組み合わせる際、Vertex AIの「Grounding with Google Maps」機能 13 を有効にすることで、エージェントは「このルート上に今開いているコンビニはありますか？」というユーザーの質問に対し、Places APIの最新データに基づいて正確な店名と位置を回答できるようになります。これにより、AI特有のハルシネーション（嘘の情報を生成すること）を防ぎます。
+3.3 Street View Static API: AIによる視覚的環境監査
+本アプリケーションの最大のイノベーションポイントとなり得るのが、Street View Static API 15 とマルチモーダルAI（Gemini Vision）の融合です。統計データだけではわからない「その場の雰囲気」や「物理的な死角」を、AIの目によって監査します。
+* サンプリング戦略: ルート上の全ての地点を解析することはコストと時間の観点で現実的ではありません。エージェントは、ルート上の「ノード（交差点）」や「長い直線の中間点」など、戦略的に重要なポイントをサンプリングし、その座標 (location) に対して画像リクエストを行います。
+* パラメータ設定:
+   * size: 600x400 程度で十分な解像度が得られます。
+   * source: outdoor を明示的に指定します 15。これにより、施設内部のインドアビューが誤って取得されるのを防ぎ、確実に路上の画像を取得できます。
+   * heading, pitch: 進行方向に基づいて適切に設定することで、ユーザーの視点に近い画像を分析できます。
+* Geminiによる画像解析: 取得した画像をGemini 3 Pro（または高速なGemini 2.0 Flash 16）に入力し、以下のようなプロンプトで解析させます。「このストリートビュー画像を分析し、夜間の歩行者の安全性について評価してください。以下の要素を考慮し、JSON形式で出力してください：1. 街灯の有無（視認できるか）、2. 歩道の幅と状態、3. 見通しの良さ（死角となる植え込みや壁がないか）、4. 落書きやゴミなどの環境悪化の兆候（割れ窓理論に基づく）。総合的な安全性スコアを1から10で算出してください。」
+* 利用規約とコンプライアンス: ここで最も注意すべきはGoogle Maps Platformの利用規約です。規約 17 では、コンテンツのスクレイピングや機械学習モデルのトレーニングデータとしての利用（データセットの作成）を禁じています。しかし、ユーザーのリクエストに応じて一時的に画像を取得し、リアルタイムで推論を行い、その結果（スコア）のみをユーザーに提示して画像データ自体は破棄するというプロセスは、一般的に「アプリケーション内での表示・利用」の範疇として許容される解像度が高いです。ただし、画像のキャッシュ（保存）は禁止されている場合が多く（pano_idのみキャッシュ可 19）、エージェントの実装においては画像をディスクに保存せず、メモリ上で処理して即座に破棄する設計にする必要があります。このコンプライアンス遵守の姿勢をドキュメント等で明示することは、審査員への重要なアピールポイントとなります。
+3.4 Solar API: 「暗さ」の代理指標としての活用
+Solar API 20 は本来、太陽光発電のポテンシャルを計算するためのものですが、そのデータを「逆転の発想」で利用することで、夜道の暗さを推論する材料とすることができます。
+* 日照データと都市峡谷: Solar APIの buildingInsights や dataLayers は、建物や樹木による影の影響を考慮した日照量を提供します。年間を通じて日照量が著しく低いエリアは、高い建物に囲まれた「都市峡谷（Urban Canyon）」や、鬱蒼とした樹木に覆われた場所である可能性が高いです。
+* 安全性への応用: 昼間に太陽光が届かない場所は、夜間においても月明かりや周辺の街明かりが届きにくく、また街灯の光も遮蔽物によって影ができやすい傾向にあります。エージェントは「日照スコアが低い区間」を「夜間は暗く、死角が多いハイリスクエリア」として判定し、ルートの推奨度を下げるロジックを組み込むことができます。これは既存のAPIを創造的に再解釈する「アイデア」点に直結します。
+3.5 Air Quality API: 環境的安全性
+安全性には「犯罪からの安全」だけでなく「健康上の安全」も含まれます。Air Quality API 22 は、日本を含む世界中の大気質データを提供します 23。
+* 多層的な安全定義: 喘息を持つユーザーやランナーにとって、排気ガスの多い幹線道路は「危険」です。エージェントは Air Quality API のヒートマップレイヤー 24 を参照し、NO2（二酸化窒素）やPM2.5の濃度が高いエリアを回避するルートを提案することも可能です。これにより、「安全」の定義をユーザーのコンテキストに合わせて拡張できる柔軟性を示せます。
+4. 知能レイヤー: Gemini 3 と Agent Development Kit (ADK)
+APIから得られたデータは単なる数字や画像の羅列に過ぎません。これらを統合し、意味のある「アドバイス」に変換するのがAIエージェントの役割です。
+4.1 Gemini 3 のマルチモーダル推論能力
+Gemini 3 Pro 2 は、テキスト、画像、コードを同時に理解する能力に優れています。安全ルート提案において、この能力は以下のように発揮されます。
+* クロスモーダルな状況判断: 例えば、Places APIが「公園」を示しており、かつSolar APIが「日陰が多い」と示し、Street View画像が「街灯が少ない」ことを示した場合、Geminiはこれらを総合して「夜間のこの公園は極めて危険度が高い」と推論します。単一のデータソースでは「ただの公園」であっても、複数のモダリティを組み合わせることでリスクが具体化します。
+* 思考の署名 (Thought Signatures): Gemini 3は、結論に至るまでの思考プロセスをトークンとして出力できます 5。開発者はこの「思考のログ」をアプリ画面に表示することで、「AIがなぜそのルートを選んだのか」をユーザーに説明できます（例：「最短ルートはAですが、画像解析の結果、街灯が少なく足元が悪いため、安全性を重視してルートBを選択しました」）。これはユーザーの納得感と信頼感を高める重要なUX要素です。
+4.2 Agent Development Kit (ADK) による実装アーキテクチャ
+Agent Development Kit (ADK) 3 は、エージェントの実装を標準化するフレームワークです。PythonやTypeScriptで記述でき、Cloud Runへのデプロイも容易です。
+推奨アーキテクチャ: ハブ＆スポーク型マルチエージェント
+1. ディスパッチャー（司令塔）エージェント: ユーザーとの対話を担当。Geminiの自然言語理解を用いて、ユーザーの意図（「急いでいる」のか「とにかく安全重視」なのか）を汲み取り、タスクをサブエージェントに振り分けます。
+2. ナビゲーション・エージェント: Routes APIを操作し、複数の経路候補を生成・分解します。
+3. 環境監査エージェント: 指定された座標リストに対し、Street View Static APIとSolar APIを用いて環境スキャンを行い、各セグメントに「環境リスクスコア」を付与します。画像解析には、レスポンス速度とコストを考慮して軽量な Gemini 2.0 Flash 16 を使用するのが賢明です。
+4. データ照会エージェント: 後述する日本のオープンデータ（犯罪統計など）を検索し、エリアごとの「統計的リスクスコア」を返します。
+5. プレゼンテーション・エージェント: 全ての結果を集約し、最終的なルート選定と、その理由付け（ナラティブ）を生成してユーザーに返します。
+この構成により、各エージェントの役割が明確化され、開発の並行作業が可能になります。また、ADKの機能により、エージェント間の通信や状態管理がコードベースで簡潔に記述できます。
+5. 日本固有のコンテキスト: オープンデータと社会実装
+日本のハッカソンである以上、日本のローカルデータへの対応は必須です。しかし、日本の行政データはAPI化が進んでいない分野も多く、ここを技術でどう突破するかが腕の見せ所となります。
+5.1 警察庁・都道府県警の犯罪統計データ
+日本の警察データは、多くの場合CSVやPDF形式で公開されており、リアルタイムAPIは存在しません 6。
+* 警視庁（東京）: 「町丁別罪種別及び手口別認知件数」などの詳細な統計をCSVで公開しています 6。
+* 神奈川県警: 自転車盗難やひったくりなどの発生状況をCSVで提供しています 26。
+* 実装戦略（Data Ingestion Pipeline）:
+エージェントがリアルタイムにCSVを読み込むのは非効率です。以下のようなパイプラインを構築します。
+   1. Cloud Functions を定期実行（月1回など）し、各県警のWebサイトから最新のCSVを取得・パースする。
+   2. 住所データを Geocoding API で緯度経度に変換し、さらに Geohash（位置情報のハッシュ値）に変換する。
+   3. 整形したデータを Firestore に保存し、Geohashをキーとしたインデックスを作成する。
+   4. エージェントはFirestoreに対し、「ルート周辺のGeohash」をクエリすることで、ミリ秒単位でそのエリアの犯罪発生率を取得する。
+これにより、「APIがない」という課題を技術的に解決し、実装力のアピールにつなげます。
+5.2 不審者情報（ガッコム安全ナビ・防災メール）
+犯罪に至る前の「予兆」データとして、不審者情報（声かけ事案など）は極めて重要です。
+      * データソース: ガッコム安全ナビ 27 や自治体の防災メールアーカイブ。
+      * Geminiによる構造化: これらは自然言語のテキスト（例：「〇月〇日午後3時頃、〇〇小学校付近で黒い服の男が…」）として存在することが多いです。GeminiのNLP能力を活用し、これらのテキストから「日時」「場所」「事案内容」を抽出して構造化データに変換し、上記と同様にFirestoreにマッピングします。
+5.3 インフラデータ（街灯・避難所）
+横浜市などは「街灯（道路照明灯）」や「避難所」の位置情報をオープンデータとして公開しています 28。
+      * 照明データの活用: Street Viewによる解析はあくまで「昼間の画像からの推測」ですが、自治体の台帳データは「確実にそこに照明がある」という事実を示します。このデータをレイヤーとして重ねることで、夜間安全性の信頼度を向上させることができます。
+6. 法規制と倫理: APPIと利用規約の遵守
+社会実装を前提としたアプリケーションにおいて、コンプライアンスは避けて通れません。
+6.1 改正個人情報保護法 (APPI) への対応
+日本のAPPI 30 は、個人の識別可能性に厳格です。
+      * ストリートビューの扱い: Googleはすでに人物の顔にぼかしを入れていますが、エージェントが画像を解析する際、万が一映り込んだ人物の特徴（服装や行動など）を記述・保存することはリスクとなります。システムプロンプト（System Instruction）において、「画像内の人物については一切言及せず、無視すること。環境のみを評価すること」と明示的に指示し、プライバシー配慮を設計レベルで組み込む必要があります。
+      * 移動履歴の保護: ユーザーの移動ルートは高度なプライバシー情報です。Firebaseへの保存時には暗号化を行い、ユーザーの同意なしにデータを二次利用しない旨をプライバシーポリシー（応募時のドキュメント）に記載することが求められます。
+6.2 Google Maps Platform 利用規約
+前述の通り、Street View画像のキャッシュやデータベース化は規約違反のリスクがあります 17。
+      * Transient Processingの徹底: 「画像取得 → メモリ上で解析 → スコア化 → 画像破棄」というフローを厳守します。
+      * 帰属表示 (Attribution): アプリ画面上には必ず "Google Maps" のロゴや、データの提供元（警視庁など）を明記する必要があります 32。特にAIが生成したテキスト内においても、「Google Mapsのデータに基づくと…」といった出典の明示を行うよう、プロンプトで指示することが重要です。
+7. 実装ロードマップとアーキテクチャ設計
+ハッカソン期間（2025年2月まで）を見据えた、段階的な実装計画を提案します。
+Phase 1: コア機能のプロトタイピング (Week 1-2)
+      * 目標: ADKを用いたエージェントの立ち上げと、基本的なルート検索。
+      * タスク:
+      * Google Cloud Projectの作成とAPI（Routes, Vertex AI）の有効化。
+      * Cloud Run上にPython版ADKエージェントをデプロイ。
+      * Flutterアプリからエージェントを呼び出し、Routes APIの結果を地図に表示する疎通確認。
+Phase 2: 安全性分析ツールの実装 (Week 3-5)
+      * 目標: Street View解析とデータ統合の実装。
+      * タスク:
+      * StreetViewTool の作成：ルート座標から画像URLを生成し、Gemini 2.0 Flashに投げるロジックの実装。並列処理（asyncio）による高速化。
+      * DataIngestion スクリプトの作成：警視庁CSVをFirestoreに投入。
+      * SafetyScoring ロジックの構築：画像スコアと犯罪データを重み付けして統合するアルゴリズムの設計。
+Phase 3: エージェントの洗練とUI/UX (Week 6-8)
+      * 目標: 対話体験の向上と特別賞対応。
+      * タスク:
+      * Grounding with Google Mapsの有効化による、施設案内の精度向上。
+      * Flutterアプリでの「思考プロセス」の可視化UI実装。エージェントがいかにして「安全」を判断しているかをユーザーに見せる。
+      * Firebase Authenticationによるユーザー管理と、過去ルートの履歴保存機能の実装。
+Phase 4: デモ動画作成とドキュメント (Final Week)
+      * 目標: 審査員に「刺さる」プレゼンテーション。
+      * タスク:
+      * Zenn記事（4,000〜6,000文字）の執筆 34。システムアーキテクチャ図の作成。
+      * 3分以内のデモ動画作成。ここでは、単にルートが出るだけでなく、エージェントが「この道は暗いので回避しました」と推論している様子を強調する。
+8. 結論
+第4回 Zenn × Google Cloud ハッカソンにおいて、AIを使った安全ルート提案アプリは、極めて強力なポテンシャルを持っています。それは、単に地図データを表示するだけでなく、Gemini 3 という高度な知能と、Google Maps Platform という豊富な現実世界のデータを、ADK を介して融合させることで、「ユーザーを守るために自律的に思考するパートナー」を作り出せるからです。
+この「Safety Scout（安全の先導者）」と呼ぶべきエージェントは、技術的な難易度（マルチモーダル処理、データパイプライン、エージェントオーケストレーション）が高い一方で、社会的なインパクト（課題発見）も大きく、ハッカソンの評価軸すべてにおいて高得点を狙える構成となっています。本レポートで示したAPIの選定、データ統合戦略、そしてコンプライアンスへの配慮を羅針盤として、開発者の皆様が革新的なソリューションを生み出すことを期待します。
+引用文献
+      1. イベント一覧 | Zenn, 12月 27, 2025にアクセス、 https://zenn.dev/events
+      2. Gemini 3 Developer Guide | Gemini API - Google AI for Developers, 12月 27, 2025にアクセス、 https://ai.google.dev/gemini-api/docs/gemini-3
+      3. google/adk-samples: A collection of sample agents built with Agent Development Kit (ADK), 12月 27, 2025にアクセス、 https://github.com/google/adk-samples
+      4. Real-World Agent Examples with Gemini 3 - Google Developers Blog, 12月 27, 2025にアクセス、 https://developers.googleblog.com/real-world-agent-examples-with-gemini-3/
+      5. Building AI Agents with Google Gemini 3 and Open Source Frameworks, 12月 27, 2025にアクセス、 https://developers.googleblog.com/building-ai-agents-with-google-gemini-3-and-open-source-frameworks/
+      6. API検索 - 東京都オープンデータAPIカタログサイト, 12月 27, 2025にアクセス、 https://spec.api.metro.tokyo.lg.jp/spec/search?organizations=%E8%AD%A6%E8%A6%96%E5%BA%81
+      7. Tools for Agents - Agent Development Kit - Google, 12月 27, 2025にアクセス、 https://google.github.io/adk-docs/tools/
+      8. Google Maps Platform Documentation | Routes API, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/routes
+      9. Maps Platform Routes Preferred API - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/routes_preferred/reference/rest/Shared.Types/Route
+      10. Custom Map Tools & Products - Google Maps Platform, 12月 27, 2025にアクセス、 https://mapsplatform.google.com/maps-products/
+      11. Overview | Places API - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/places/web-service/overview
+      12. Places API (New) – APIs & Services - Google Cloud Console, 12月 27, 2025にアクセス、 https://console.cloud.google.com/apis/library/places.googleapis.com
+      13. Grounding for Google Maps now available in the Gemini API, 12月 27, 2025にアクセス、 https://blog.google/technology/developers/grounding-google-maps-gemini-api/
+      14. Grounding with Google Maps in Vertex AI, 12月 27, 2025にアクセス、 https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-google-maps
+      15. Street View Static API overview - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/streetview/overview
+      16. Gemini 2.0 Flash | Generative AI on Vertex AI - Google Cloud Documentation, 12月 27, 2025にアクセス、 https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash
+      17. Google Maps Platform Terms Of Service, 12月 27, 2025にアクセス、 https://cloud.google.com/maps-platform/terms
+      18. Google Maps End User Additional Terms of Service, 12月 27, 2025にアクセス、 https://www.google.com/help/terms_maps/
+      19. Google Maps Platform Service Specific Terms, 12月 27, 2025にアクセス、 https://cloud.google.com/maps-platform/terms/maps-service-terms
+      20. Solar API overview - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/solar/overview
+      21. Methodology | Solar API - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/solar/methodology
+      22. Air quality on Google - Google Maps Help, 12月 27, 2025にアクセス、 https://support.google.com/maps/answer/11270845?hl=en
+      23. Air Quality API supported countries and available AQIs - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/air-quality/coverage
+      24. Air Quality API overview - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/air-quality/overview
+      25. Introducing Agent Development Kit for TypeScript: Build AI Agents with the Power of a Code-First Approach - Google for Developers Blog, 12月 27, 2025にアクセス、 https://developers.googleblog.com/introducing-agent-development-kit-for-typescript-build-ai-agents-with-the-power-of-a-code-first-approach/
+      26. 神奈川県警察オープンデータサイト, 12月 27, 2025にアクセス、 https://www.police.pref.kanagawa.jp/tokei/hanzai_tokei/mesd0145.html
+      27. Gaccom Safety Navi - easy-to-understand public safety information website using maps and avatars, 12月 27, 2025にアクセス、 https://www.gaccom.jp/en/safety?lat=35.6463054&lng=139.8105363
+      28. 避難所ナビ（横浜市） - 福野泰介, 12月 27, 2025にアクセス、 https://fukuno.jig.jp/2014/findrefuge-yokohama
+      29. 境界点の座標が知りたい。 - 道路 - 横浜市, 12月 27, 2025にアクセス、 https://www.city.yokohama.lg.jp/kurashi/machizukuri-kankyo/doro/qa/shirabetai/019.html
+      30. APPI: Japan's Personal Data Protection Law Explained - DataSunrise, 12月 27, 2025にアクセス、 https://www.datasunrise.com/data-compliance/appi/
+      31. Data protection laws in Japan, 12月 27, 2025にアクセス、 https://www.dlapiperdataprotection.com/index.html?t=law&c=JP
+      32. Policies and attributions for Street View Static API | Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/streetview/policies
+      33. Policies and attributions for Places API - Google for Developers, 12月 27, 2025にアクセス、 https://developers.google.com/maps/documentation/places/web-service/policies
+      34. 【Zenn 初開催】AI エージェント開発に挑戦！初心者歓迎ハッカソン, 12月 27, 2025にアクセス、 https://zenn.dev/hackathons/2024-google-cloud-japan-ai-hackathon

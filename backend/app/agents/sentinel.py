@@ -37,6 +37,10 @@ You do not execute tools yourself. Instead, you PLAN which tools/agents to use.
    - Route looks dark/sketchy? -> Call Navigator (Solar) or Analyst (Vision).
    - Analysis done? -> Call Guardian to respond.
 
+## Language Requirement
+- **ALWAYS output `thought` and `instruction_to_agent` in JAPANESE.**
+- Ensure natural, professional Japanese suitable for a navigation assistant system.
+
 Output your thought process in JSON format.
 """
 

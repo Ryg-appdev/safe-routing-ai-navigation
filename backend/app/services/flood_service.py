@@ -43,8 +43,9 @@ class FloodService:
         "0.5m未満": {"r_min": 230, "g_min": 220, "b_max": 150},  # 薄い黄
     }
     
+    
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=10.0)
+        # self.client = httpx.AsyncClient(timeout=10.0) # Persistent client causes Event Loop issues on reload
         self._cache: dict[str, Tuple[bool, Optional[str]]] = {}
     
     async def check_flood_risk(
@@ -79,7 +80,9 @@ class FloodService:
             
             # タイル取得
             url = f"{self.BASE_URL}/{self.TILE_PATH}/{zoom}/{tile_x}/{tile_y}.png"
-            response = await self.client.get(url)
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url)
             
             if response.status_code == 404:
                 # タイルなし = その地域にはデータなし（浸水リスクなし）

@@ -43,7 +43,15 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Location permission description -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>現在地を取得して出発地点に設定し、ナビゲーションを開始します。</string>
 </dict>
 </plist>

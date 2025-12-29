@@ -55,6 +55,16 @@
 - コードコメントも日本語で書いてください（変数名・関数名は英語）
 - 技術用語は必要に応じて英語のまま使用してもOKです
 
+## 相互理解・学習のためのルール (User-Centric Development)
+> [!IMPORTANT]
+> ユーザーが「コードを理解しながら進める」ことを最優先する。
+- **Explanation First**: コードを書く前に、必ず「実装するロジックの概要」と「なぜそのコードが必要か」を説明し、合意を得ること。
+- **Step-by-Step Implementation**: 巨大なコードを一気に生成せず、論理的なブロックごとに区切って実装・解説すること。
+- **Japanese Comments**: コードの意図を理解機しやすくするため、重要なロジック部分には日本語で丁寧なコメントを記述すること。
+- **Diagrams**: 複雑なロジック（リスク評価アルゴリズム等）は、必ず Mermaid 等で図解して可視化すること。
+- **Code Walkthrough**: 実装完了後、単に「完了しました」で終わらせず、実装したコードの主要部分（どの関数が何をしているか）を丁寧に解説すること。
+- **Documentation First**: 実装は必ず「確定した仕様書 (`Docs/確定/`)」に従うこと。実装中に仕様との乖離が必要になった場合、**コードを書く前にドキュメントを更新し、ユーザーの合意を得る**こと。
+
 ## コーディングスタイル
 
 ### General
@@ -131,20 +141,35 @@
 - **Normal**: 標準（Standard）または明るいカスタムスタイル
 - **Emergency**: ダークモードベース、建物等のノイズを減らし、ルートと危険エリアを強調するスタイル
 
+## アーキテクチャ (True Agentic Architecture)
+
+### 階層型マルチエージェント
+本プロジェクトは、単一のLLMではなく、役割分担された複数のエージェント群によって動作する。
+
+1.  **🕵️ The Sentinel (司令塔)**: ユーザーの文脈を理解し、適切な専門エージェントを呼び出す。推論（Reasoning）の中枢。
+2.  **🗺️ The Navigator (探索)**: Google Routes API, Solar, Places, Crime DB等を駆使し、ルート探索と物理的リスク評価を行う。
+3.  **👁️ The Analyst (視覚)**: 必要に応じてStreet Viewやカメラ映像を解析し、数値化できない「雰囲気（Vibe）」をスコア化する。
+4.  **🛡️ The Guardian (守護)**: ユーザーへの対話インターフェース。緊急度に応じたペルソナ（Concierge / Tactical）で応答する。
+
+### リスク評価ロジック (Bottle-neck Safety)
+- **Route Sampling**: ルート全体ではなく、**50m間隔のポイント**に分解して評価する。
+- **Bottle-neck Evaluation**: 平均点ではなく、**「最も危険な地点（ボトルネック）」のスコア**をルート全体のスコアとする。「99%安全でも1箇所真っ暗なら危険」と判定する。
+
 ## よく使うパターン (Google ADK / Python)
 
-### Agent定義
+### Agent定義 (Sentinel Pattern)
 ```python
 from google.adk import Agent
 
-# Risk Evaluator Agent
-risk_evaluator = Agent(
-    name="risk_evaluator",
-    model="gemini-2.0-flash",
+# Sentinel Agent (Dispatcher)
+sentinel = Agent(
+    name="sentinel",
+    model="gemini-3-pro",
     instruction="""
-    You are a Disaster Risk Assessment Specialist.
-    Evaluate safety based on weather, hazard, and crime data.
-    Output JSON with riskScore (0-100) and detectedRisks array.
+    You are The Sentinel.
+    Your goal is to PROTECT the user by planning the best course of action.
+    Do not execute tools directly. Plan which agent (Navigator, Analyst, Guardian) to call.
+    Output JSON with { thought, urgency, next_agent, instruction }.
     """
 )
 ```

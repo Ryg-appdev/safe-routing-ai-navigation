@@ -303,7 +303,7 @@ def handle_route_request_stream(request):
                     "icon": "⚠️",
                     "should_emergency_mode": True,
                 }
-                yield f"data: {json.dumps({'type': 'status', 'agent': 'System', 'message': f'[テスト] 警報設定: {test_alert}'})}\\n\\n".encode('utf-8')
+                yield f"data: {json.dumps({'type': 'status', 'agent': 'System', 'message': f'[テスト] 警報設定: {test_alert}'})}\n\n".encode('utf-8')
                 print(f"🧪 [TEST] Using test alert: {test_alert}", flush=True)
             
             # テスト警報がない場合は実際のAPIを使用
