@@ -32,13 +32,21 @@ class AnalystAgent:
         
         # 3. Gemini Vision API Call
         prompt = """
-        Analyze this street view image for pedestrian safety at night.
+        Analyze this street view image for pedestrian safety and "vibe" (atmosphere).
+        Focus on signs of disorder ("Broken Windows Theory") and safety features.
+        
+        Check for:
+        1. Lighting/Brightness (Streetlights, visibility)
+        2. Disorder (Graffiti, Litter, Abandoned buildings, Overgrown vegetation)
+        3. Human Presence (Crowds vs Empty, "Sketchy" vs "Family-friendly")
+        4. Surveillance (Cameras, Police box nearby)
+
         Output ONLY JSON:
         {
-          "safety_score": 0-100 (100 is very safe, bright, populated. 0 is dark, abandoned, dangerous),
-          "atmosphere": "Short ONE-LINE description of the vibe in JAPANESE (e.g. '賑やかな繁華街', '街灯の少ない路地', '閑静な住宅街')",
+          "safety_score": 0-100 (100 is very safe/clean/bright. 0 is dangerous/dirty/dark),
+          "atmosphere": "Short ONE-LINE description of the vibe in JAPANESE (e.g. '賑やかな繁華街', '落書きが多く荒れた路地', '街灯が少なく暗い')",
           "lighting": "Low/Medium/High",
-          "risk_factors": ["list", "of", "risks", "in", "JAPANESE"]
+          "risk_factors": ["List 2-3 key risks in JAPANESE if any (e.g. '落書きが多い', '人通りがない', '照明不足')"]
         }
         """
         
@@ -72,8 +80,10 @@ class AnalystAgent:
                         text_content += part.text
             
             result = json.loads(text_content)
+            # 画像URLも返す（フロントエンドで表示用）
+            result["image_url"] = image_url
             return result
 
         except Exception as e:
             print(f"⚠️ Analyst Vision Error: {e}")
-            return {"score": 50, "reason": f"Analysis failed: {str(e)}"}
+            return {"score": 50, "reason": f"Analysis failed: {str(e)}", "image_url": image_url}

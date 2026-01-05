@@ -14,6 +14,7 @@ import '../widgets/alert_status_banner.dart';
 import '../widgets/alert_detail_sheet.dart';
 import '../widgets/location_selection_sheet.dart';
 import '../widgets/analysis_point_detail_sheet.dart';
+import '../widgets/agent_progress_widget.dart';
 import '../services/api_service.dart';
 import '../services/geocoding_service.dart';
 import '../services/hazard_tile_provider.dart';
@@ -54,10 +55,18 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
   
   // Custom Marker Icons
   BitmapDescriptor? _safeMarkerIcon;
+  BitmapDescriptor? _warningMarkerIcon;
   BitmapDescriptor? _riskyMarkerIcon;
+  BitmapDescriptor? _pendingMarkerIcon;
   
   // 分析ポイントの詳細データを保存
   final Map<String, Map<String, dynamic>> _analysisPointData = {};
+  
+  // 分析ポイントのLatLngリスト（カメラ移動用）
+  final List<LatLng> _analysisPoints = [];
+  
+  // エージェント進捗ステータス
+  Map<String, AgentStatus> _agentStatuses = {};
 
   
   // 渋谷駅を初期位置に
@@ -88,11 +97,17 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       duration: const Duration(milliseconds: 500), // Smooth transition
     );
 
-    _createAnalysisMarkerBitmap(isRisky: false).then((icon) {
+    _createAnalysisMarkerBitmap(level: 0).then((icon) {
       if (mounted) setState(() => _safeMarkerIcon = icon);
     });
-    _createAnalysisMarkerBitmap(isRisky: true).then((icon) {
+    _createAnalysisMarkerBitmap(level: 1).then((icon) {
+      if (mounted) setState(() => _warningMarkerIcon = icon);
+    });
+    _createAnalysisMarkerBitmap(level: 2).then((icon) {
       if (mounted) setState(() => _riskyMarkerIcon = icon);
+    });
+    _createAnalysisMarkerBitmap(level: 3).then((icon) {
+      if (mounted) setState(() => _pendingMarkerIcon = icon);
     });
     
     // 現在地を取得して設定
@@ -151,12 +166,13 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
     super.dispose();
   }
 
-  Future<BitmapDescriptor> _createAnalysisMarkerBitmap({required bool isRisky}) async {
+  // level: 0 (Safe), 1 (Warning), 2 (Risky)
+  Future<BitmapDescriptor> _createAnalysisMarkerBitmap({required int level}) async {
     final pictureRecorder = ui.PictureRecorder();
     final canvas = Canvas(pictureRecorder);
     final paint = Paint()..isAntiAlias = true;
     
-    if (isRisky) {
+    if (level == 2) {
       // -------------------------------
       // RISKY Style (Red Circle + ⚠️)
       // -------------------------------
@@ -198,6 +214,70 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
       
+    } else if (level == 1) {
+      // -------------------------------
+      // WARNING Style (Yellow Circle + !)
+      // -------------------------------
+      final double radius = 28.0;
+
+      // 1. Draw outer circle (Yellow, semi-transparent)
+      paint.style = PaintingStyle.fill;
+      paint.color = Colors.orangeAccent.withOpacity(0.3); 
+      canvas.drawCircle(Offset(radius, radius), radius, paint);
+
+      // 2. Draw inner circle (More opaque yellow)
+      paint.color = Colors.orangeAccent.withOpacity(0.7);
+      canvas.drawCircle(Offset(radius, radius), radius * 0.7, paint);
+
+      // 3. Draw Exclamation Icon
+      final textPainter = TextPainter(
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.text = TextSpan(
+        text: '!', 
+        style: TextStyle(
+          fontSize: radius * 1.2,
+          fontFamily: 'Roboto',
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          radius - textPainter.width / 2,
+          radius - textPainter.height / 2,
+        ),
+      );
+      
+      final image = await pictureRecorder.endRecording().toImage(
+        (radius * 2).toInt(),
+        (radius * 2).toInt(),
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+
+    } else if (level == 3) {
+      // -------------------------------
+      // PENDING Style (Small Gray Circle)
+      // -------------------------------
+      final double radius = 16.0;
+
+      paint.style = PaintingStyle.fill;
+      paint.color = Colors.grey.withOpacity(0.5);
+      canvas.drawCircle(Offset(radius, radius), radius, paint);
+
+      paint.color = Colors.white.withOpacity(0.8);
+      canvas.drawCircle(Offset(radius, radius), radius * 0.5, paint);
+
+      final image = await pictureRecorder.endRecording().toImage(
+        (radius * 2).toInt(),
+        (radius * 2).toInt(),
+      );
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+
     } else {
       // -------------------------------
       // SAFE Style (Original Cyan Circle)
@@ -651,7 +731,12 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
+            padding: const EdgeInsets.only(
+              top: 260.0,    // Search Bar Area (Reduced slightly)
+              bottom: 320.0, // Bottom Sheet Area (Reduced to minimize dead space)
+              left: 0.0,
+              right: 0.0,
+            ),
           ),
           
           // Fade Overlay (Smooth theme transition)
@@ -673,12 +758,15 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
           ),
           
           // Thinking Log オーバーレイ（画面下に配置）
+          // ロード中はエージェント進捗表示、そうでなければコンソールログ
           if (_showThinkingLog && !_showNarrative)
             Positioned(
               left: 0,
               right: 0,
               bottom: bottomPadding + 16, // safe area + マージン
-              child: const ThinkingLogOverlay(),
+              child: _isLoading
+                ? AgentProgressWidget(agentStatuses: _agentStatuses)
+                : const ThinkingLogOverlay(),
             ),
           
           // Mode Badge (Tappable) and Settings Button
@@ -936,9 +1024,53 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
     HapticFeedback.mediumImpact();
     
     setState(() => _isLoading = true);
+
+    // Clear previous results
+    setState(() {
+      _markers.clear();
+      _polylines.clear();
+      _realRouteActive = true;
+      _analysisPoints.clear();
+      // エージェント進捗を初期化（状況判断は開始時から処理中）
+      _agentStatuses = {
+        'sentinel': AgentStatus(status: 'processing', progress: 10, message: '処理を開始...'),
+      };
+      // _routeLegs.clear(); // This variable is not defined in the provided context
+      // _totalDistance = ''; // This variable is not defined in the provided context
+      // _totalDuration = ''; // This variable is not defined in the provided context
+      // _summary = 'ルート探索中...';
+      // _streamingStatus = '接続中...';
+       // Reset Icons -> DO NOT RESET THESE! They are cached.
+       // Clearing them caused markers to not appear if analysis happened before re-init.
+      // _safeMarkerIcon = null;
+      // _warningMarkerIcon = null;
+      // _riskyMarkerIcon = null;
+    });
+
+    // Re-generate icons just in case (though they are cached)
+    // _createAnalysisMarkerBitmap(level: 0).then((icon) => _safeMarkerIcon = icon); // This method is not defined in the provided context
+    // _createAnalysisMarkerBitmap(level: 1).then((icon) => _warningMarkerIcon = icon); // This method is not defined in the provided context
+    // _createAnalysisMarkerBitmap(level: 2).then((icon) => _riskyMarkerIcon = icon); // This method is not defined in the provided context
+
+    // 座標が未設定の場合（テキスト入力のみの場合）、ジオコーディングを実行
+    if (_originLatLng == null && _originController.text.isNotEmpty) {
+       await _geocodeAndMoveCamera(_originController.text, isOrigin: true);
+    }
+    if (_destLatLng == null && _destController.text.isNotEmpty) {
+       await _geocodeAndMoveCamera(_destController.text, isOrigin: false);
+    }
+
+    if (_originLatLng != null && _destLatLng != null) {
+        // Move camera to fit bounds of Origin and Dest immediately
+        // Wait a small frame to ensure map is ready/layout is updated
+        await Future.delayed(const Duration(milliseconds: 100));
+        _fitBounds(_originLatLng!, _destLatLng!);
+    }
     
     final api = ApiService();
     final isEmergency = ref.read(emergencyModeProvider);
+    // Determine current Alert Mode for the API request
+    final alertStatus = ref.read(effectiveAlertProvider);
     
     // Thinking Log を表示開始
     ref.read(thinkingLogProvider.notifier).clear();
@@ -977,11 +1109,8 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       }
       
       // Start時にカメラ位置を調整 (もし座標があれば)
-      if (_originLatLng != null && _destLatLng != null) {
-         _fitBounds([_originLatLng!, _destLatLng!]);
-      } else if (_currentLocation != null && _destLatLng != null) {
-         _fitBounds([_currentLocation!, _destLatLng!]);
-      }
+      // Removed: if (_originLatLng != null && _destLatLng != null) { _fitBounds([_originLatLng!, _destLatLng!]); }
+      // Removed: else if (_currentLocation != null && _destLatLng != null) { _fitBounds([_currentLocation!, _destLatLng!]); }
 
       // SSE Stream Start
       
@@ -1001,6 +1130,41 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
           final agent = event['agent'] ?? 'System';
           final message = event['message'] ?? '';
           await _addThinkingLog('> [$agent] $message');
+          
+        } else if (type == 'agent_status') {
+          // エージェント進捗表示: プログレスバー更新
+          final agent = event['agent'] as String?;
+          if (agent != null) {
+            setState(() {
+              _agentStatuses = Map.from(_agentStatuses);
+              _agentStatuses[agent] = AgentStatus.fromJson(event);
+            });
+          }
+          // ログにも追加
+          final message = event['message'] ?? '';
+          await _addThinkingLog('> [${agent ?? "System"}] $message');
+          
+        } else if (type == 'sampling_points') {
+          // サンプリングポイント先行表示（グレーマーカー）
+          final points = event['points'] as List?;
+          if (points != null && points.isNotEmpty && _pendingMarkerIcon != null) {
+            setState(() {
+              for (var p in points) {
+                final lat = (p['lat'] as num).toDouble();
+                final lng = (p['lng'] as num).toDouble();
+                final markerId = 'analysis_${lat}_${lng}';
+                
+                _markers.add(Marker(
+                  markerId: MarkerId(markerId),
+                  position: LatLng(lat, lng),
+                  icon: _pendingMarkerIcon!,
+                  anchor: const Offset(0.5, 0.5),
+                  consumeTapEvents: true,
+                  zIndex: 0,
+                ));
+              }
+            });
+          }
           
         } else if (type == 'candidate_routes') {
           // 候補ルート表示 (薄いグレー)
@@ -1032,6 +1196,8 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
              final lng = (point['lng'] as num).toDouble();
              final score = (point['score'] as num?)?.toDouble() ?? 50.0;
              final risks = (point['risks'] as List?)?.cast<String>() ?? [];
+             final imageUrl = point['image_url'] as String?;
+             final atmosphere = point['atmosphere'] as String?;
              
              final markerId = 'analysis_${lat}_${lng}';
              
@@ -1041,20 +1207,30 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
                'lng': lng,
                'score': score,
                'risks': risks,
+               'image_url': imageUrl,
+               'atmosphere': atmosphere,
              };
              
              // マーカーを追加
              // スコアに応じてアイコンを使い分け
              // < 50: 危険 (Red Warning)
-             // >= 50: 安全 (Cyan Circle)
-             final icon = (score < 50) ? _riskyMarkerIcon : _safeMarkerIcon;
+             // < 70: 注意 (Yellow Warning)
+             // >= 70: 安全 (Cyan Circle)
+             final BitmapDescriptor? icon;
+             if (score < 50) {
+               icon = _riskyMarkerIcon;
+             } else if (score < 70) {
+               icon = _warningMarkerIcon;
+             } else {
+               icon = _safeMarkerIcon;
+             }
              
              if (icon != null) {
                setState(() {
                  _markers.add(Marker(
                    markerId: MarkerId(markerId),
                    position: LatLng(lat, lng),
-                   icon: icon,
+                   icon: icon!,
                    anchor: const Offset(0.5, 0.5), // 中心をアンカーに
                    onTap: () {
                      // タップで詳細シートを表示
@@ -1066,6 +1242,8 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
                          lng: data['lng'],
                          score: data['score'],
                          risks: List<String>.from(data['risks']),
+                         imageUrl: data['image_url'],
+                         atmosphere: data['atmosphere'],
                        );
                      }
                    },
@@ -1152,7 +1330,7 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
         };
       });
 
-      _fitBounds(routePoints);
+      _fitBounds(originPoint, destPoint);
 
       final score = routeData['risk_assessment']?['score'] ?? 'N/A';
       
@@ -1230,6 +1408,30 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
         SnackBar(content: Text('📍 現在地取得に失敗: $e'), backgroundColor: Colors.orange)
       );
     }
+  }
+
+  // --- Camera Control ---
+  void _fitBounds(LatLng p1, LatLng p2) {
+    if (_mapController == null) return;
+    
+    double minLat = p1.latitude < p2.latitude ? p1.latitude : p2.latitude;
+    double maxLat = p1.latitude > p2.latitude ? p1.latitude : p2.latitude;
+    double minLng = p1.longitude < p2.longitude ? p1.longitude : p2.longitude;
+    double maxLng = p1.longitude > p2.longitude ? p1.longitude : p2.longitude;
+    
+    // UIのPaddingはすでにGoogleMap側で確保済みなので、
+    // ここで追加するマージンは最小限(20.0)にして、なるべく大きく表示する。
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        20.0, 
+      ),
+    ); 
+
+
   }
 
   // --- Helper Methods ---
@@ -1410,37 +1612,10 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
   }
 
   
-  void _fitBounds(List<LatLng> points) {
-    if (points.isEmpty || _mapController == null) return;
-    
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
-    
-    for (var p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-    
-    // 緯度を調整してUIオーバーレイを考慮（上部: 入力欄, 下部: シート）
-    // 緯度方向に余裕を持たせる
-    final latDelta = maxLat - minLat;
-    minLat -= latDelta * 0.8; // 下部（シート）用のマージン
-    maxLat += latDelta * 0.8; // 上部（入力欄）用のマージン
-    
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        50, // 基本padding
-      ),
-    );
-  }
+  // Removed duplicate _fitBounds (List<LatLng>) to avoid conflict
+  // We use the 2-point version for origin/dest.
+  // If list version is needed, we should rename it or overload it properly.
+  // For now, removing it to fix the build error.
 
   Widget _buildModeBadge(bool isEmergency) {
     return Material(

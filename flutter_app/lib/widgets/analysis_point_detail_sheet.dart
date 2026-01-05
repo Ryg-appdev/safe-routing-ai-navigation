@@ -7,6 +7,8 @@ class AnalysisPointDetailSheet extends StatelessWidget {
   final double lng;
   final double score;
   final List<String> risks;
+  final String? imageUrl;
+  final String? atmosphere;
 
   const AnalysisPointDetailSheet({
     super.key,
@@ -14,6 +16,8 @@ class AnalysisPointDetailSheet extends StatelessWidget {
     required this.lng,
     required this.score,
     required this.risks,
+    this.imageUrl,
+    this.atmosphere,
   });
 
   /// スコアに応じた色を返す
@@ -86,6 +90,37 @@ class AnalysisPointDetailSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
+
+          // ===== Street View 画像 =====
+          if (imageUrl != null)
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Image.network(
+                imageUrl!,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    height: 150,
+                    color: Colors.grey[200],
+                    child: const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 100,
+                    color: Colors.grey[200],
+                    child: const Center(
+                      child: Icon(Icons.image_not_supported, color: Colors.grey),
+                    ),
+                  );
+                },
+              ),
+            ),
 
           // ヘッダー
           Padding(
@@ -168,6 +203,24 @@ class AnalysisPointDetailSheet extends StatelessWidget {
 
           const Divider(height: 1),
 
+          // ===== 雰囲気（atmosphereから直接表示） =====
+          if (atmosphere != null && atmosphere!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Text('🌆', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      atmosphere!,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // リスク要因リスト
           if (riskItems.isNotEmpty || bonusItems.isNotEmpty)
             Padding(
@@ -175,8 +228,8 @@ class AnalysisPointDetailSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // リスク要因
-                  ...riskItems.map((risk) => Padding(
+                  // リスク要因 (VIBE_RISKを除く、atmosphereで表示済み)
+                  ...riskItems.where((r) => !r.startsWith('VIBE_RISK:')).map((risk) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       _translateRisk(risk),
@@ -196,7 +249,7 @@ class AnalysisPointDetailSheet extends StatelessWidget {
             ),
 
           // リスクがない場合
-          if (riskItems.isEmpty && bonusItems.isEmpty)
+          if (riskItems.where((r) => !r.startsWith('VIBE_RISK:')).isEmpty && bonusItems.isEmpty && (atmosphere == null || atmosphere!.isEmpty))
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
@@ -219,6 +272,8 @@ void showAnalysisPointDetailSheet({
   required double lng,
   required double score,
   required List<String> risks,
+  String? imageUrl,
+  String? atmosphere,
 }) {
   showModalBottomSheet(
     context: context,
@@ -229,6 +284,8 @@ void showAnalysisPointDetailSheet({
       lng: lng,
       score: score,
       risks: risks,
+      imageUrl: imageUrl,
+      atmosphere: atmosphere,
     ),
   );
 }

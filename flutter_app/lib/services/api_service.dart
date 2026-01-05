@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Simulator (iOS) -> localhost
-  // Emulator (Android) -> 10.0.2.2
-  // Real Device -> 192.168.11.10 (Current Mac IP)
-  static const String _baseUrl = 'http://127.0.0.1:8080';
+  // Development: localhost (Simulator/Emulator経由)
+  // Production: Cloud Run URL
+  static const String _devUrl = 'http://127.0.0.1:8080';
+  static const String _prodUrl = 'https://safe-routing-api-20596701846.asia-northeast1.run.app';
+  
+  // kDebugModeでDev/Prod切り替え（Release buildは本番URLを使用）
+  static String get _baseUrl => kDebugMode ? _devUrl : _prodUrl;
 
   Future<Map<String, dynamic>> findSafeRoute(String origin, String destination) async {
     final url = Uri.parse('$_baseUrl/findSafeRoute');

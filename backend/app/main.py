@@ -357,13 +357,13 @@ def handle_route_request_stream(request):
                     yield f"data: {json.dumps({'type': 'status', 'agent': 'System', 'message': f'警報確認スキップ: {err_msg}'})}\n\n".encode('utf-8')
 
             # 3. Sentinel Analysis
-            yield f"data: {json.dumps({'type': 'status', 'agent': 'Sentinel', 'message': '状況を解析中...'})}\n\n".encode('utf-8')
+            yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'sentinel', 'status': 'processing', 'progress': 30, 'message': '状況を解析中...'})}\n\n".encode('utf-8')
             
             user_input = f"I want to go from {origin} to {destination}."
             sentinel_plan = sentinel.analyze_status(user_input, context)
             
             trace_log = [{"agent": "Sentinel", "output": sentinel_plan}]
-            yield f"data: {json.dumps({'type': 'status', 'agent': 'Sentinel', 'message': '解析完了'})}\n\n".encode('utf-8')
+            yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'sentinel', 'status': 'complete', 'progress': 100, 'message': '解析完了'})}\n\n".encode('utf-8')
             
             # 4. Navigator (if needed)
             route_result = None
@@ -373,12 +373,12 @@ def handle_route_request_stream(request):
             current_urgency = sentinel_plan.get("detected_urgency", "LOW")
             
             if sentinel_plan.get("next_agent") == "NAVIGATOR":
-                yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': 'ルート探索を開始...'})}\n\n".encode('utf-8')
+                yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'processing', 'progress': 10, 'message': 'ルート探索を開始...'})}\n\n".encode('utf-8')
                 
                 prefs = ["avoid_darkness"] if context.mode == "NORMAL" else ["shortest", "avoid_flood"]
                 
                 # Step 1: Routes API 呼び出し
-                yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': 'Google Routes APIにクエリ送信中...'})}\n\n".encode('utf-8')
+                yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'processing', 'progress': 20, 'message': 'Google Routes APIにクエリ送信中...'})}\n\n".encode('utf-8')
                 routes_data = navigator.fetch_routes(origin, destination)
                 
                 if "error" in routes_data:
@@ -387,7 +387,7 @@ def handle_route_request_stream(request):
                     route_result = routes_data
                 else:
                     route_count = routes_data.get("count", 0)
-                    yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': f'{route_count}件のルート候補を取得'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'processing', 'progress': 35, 'message': f'{route_count}件のルート候補を取得'})}\n\n".encode('utf-8')
                     
                     routes_list = routes_data.get("routes", [])
 
@@ -406,7 +406,17 @@ def handle_route_request_stream(request):
                         print(f"⚠️ Failed to send candidate routes: {e}")
 
                     # Step 2: 各ルートのリスク分析
-                    yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': 'リスク分析を実行中...'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'processing', 'progress': 40, 'message': '各ポイントを評価中...'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'analyst', 'status': 'processing', 'progress': 10, 'message': 'リスク分析を開始...'})}\n\n".encode('utf-8')
+                    
+                    # --- サンプリングポイントを先行送信（グレーマーカー表示用）---
+                    # 【最適化】ユニークポイントのみ送信（重複排除済み）
+                    try:
+                        unique_sampling_points = navigator.get_unique_sampling_points(routes_list)
+                        if unique_sampling_points:
+                            yield f"data: {json.dumps({'type': 'sampling_points', 'points': unique_sampling_points})}\n\n".encode('utf-8')
+                    except Exception as e:
+                        print(f"⚠️ Failed to send sampling points: {e}")
                     
                     # Queue for streaming analysis points from thread
                     import queue
@@ -428,14 +438,13 @@ def handle_route_request_stream(request):
                         analysis_queue.put(data)
 
                     # 全ルートを並列処理するヘルパー関数
-                    async def analyze_all_routes(routes):
-                        # Pass callback to analyze_single_route
-                        tasks = [navigator.analyze_single_route(r, on_progress=point_callback) for r in routes]
-                        return await asyncio.gather(*tasks, return_exceptions=True)
+                    # 【最適化】全ルートを一括分析（重複ポイント排除）
+                    async def analyze_all_routes_batch(routes):
+                        return await navigator.analyze_routes_batch(routes, on_progress=point_callback)
                     
                     # Run analysis in a separate thread so we can stream events from queue
                     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    future = executor.submit(asyncio.run, analyze_all_routes(routes_list))
+                    future = executor.submit(asyncio.run, analyze_all_routes_batch(routes_list))
                     
                     # Stream events while waiting for completion
                     while not future.done():
@@ -455,25 +464,19 @@ def handle_route_request_stream(request):
                         except queue.Empty:
                             break
                             
-                    all_results = future.result()
+                    # 【変更】analyze_routes_batch は直接 evaluated_routes を返す
+                    evaluated_routes = future.result()
                     executor.shutdown()
                     
-                    evaluated_routes = []
-                    for i, result in enumerate(all_results):
-                        if isinstance(result, Exception):
-                            print(f"⚠️ Route {i+1} analysis error: {result}")
-                            continue
-                        if result:
-                            evaluated_routes.append(result)
-                    
-                    yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': f'{len(evaluated_routes)}件のルートを分析完了'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'processing', 'progress': 85, 'message': f'{len(evaluated_routes)}件のルート評価完了'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'analyst', 'status': 'complete', 'progress': 100, 'message': 'リスク分析完了'})}\n\n".encode('utf-8')
                     
                     # Step 3: 最適ルート選定
                     if evaluated_routes:
                         evaluated_routes.sort(key=lambda x: x["score"], reverse=True)
                         best_route = evaluated_routes[0]
                         score = best_route["score"]
-                        yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': f'最適ルートを選定（安全スコア: {score}）'})}\n\n".encode('utf-8')
+                        yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'complete', 'progress': 100, 'message': '最適ルートを選定完了'})}\n\n".encode('utf-8')
                         
                         route_result = {
                             "route_id": "real_route_v1",
@@ -486,14 +489,14 @@ def handle_route_request_stream(request):
                             }
                         }
                     else:
-                        yield f"data: {json.dumps({'type': 'status', 'agent': 'Navigator', 'message': 'リスク分析失敗'})}\n\n".encode('utf-8')
+                        yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'navigator', 'status': 'complete', 'progress': 100, 'message': 'リスク分析失敗'})}\n\n".encode('utf-8')
                         route_result = {"error": "No valid routes after analysis"}
                 
                 # Payload optimization: Don't include huge route object in trace log
                 trace_log.append({"agent": "Navigator", "output": "Route data available (details in route_data)"})
             
             # 5. Guardian Response
-            yield f"data: {json.dumps({'type': 'status', 'agent': 'Guardian', 'message': '最終レスポンスを生成中...'})}\n\n".encode('utf-8')
+            yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'guardian', 'status': 'processing', 'progress': 30, 'message': '回答を生成中...'})}\n\n".encode('utf-8')
             
             guardian_response = guardian.generate_response(
                 urgency=current_urgency,
@@ -508,7 +511,7 @@ def handle_route_request_stream(request):
             trace_log.append({"agent": "Guardian", "output": guardian_response})
             print(f"[DEBUG] Guardian Response: {guardian_response}", flush=True)
             
-            yield f"data: {json.dumps({'type': 'status', 'agent': 'Guardian', 'message': '完了'})}\n\n".encode('utf-8')
+            yield f"data: {json.dumps({'type': 'agent_status', 'agent': 'guardian', 'status': 'complete', 'progress': 100, 'message': '完了'})}\n\n".encode('utf-8')
             
             # 6. Final Result
             # guardian_responseは辞書なので、textフィールドを抽出
@@ -608,4 +611,6 @@ if __name__ == "__main__":
         return handle_reverse_geocode(request)
         
     # debug=True, threaded=True でストリーミングをサポート
-    app.run(host="0.0.0.0", port=8080, debug=True, threaded=True)
+    # Cloud Run対応: PORT環境変数から取得
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
