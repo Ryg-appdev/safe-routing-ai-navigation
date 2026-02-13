@@ -7,7 +7,9 @@ pydantic
 requests
 googlemaps>=4.10.0  # Polyline decoding & utilities
 geopy>=2.4.0  # Distance calculation for resampling
+Pillow>=10.0.0  # ハザードマップタイル画像処理
 
 # Web Framework (Cloud Run)
 functions-framework>=3.0.0
 flask>=3.0.0
+gunicorn>=21.2.0  # 本番用WSGIサーバー

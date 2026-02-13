@@ -6,10 +6,11 @@ class ApiService {
   // Development: localhost (Simulator/Emulator経由)
   // Production: Cloud Run URL
   static const String _devUrl = 'http://127.0.0.1:8080';
-  static const String _prodUrl = 'https://safe-routing-api-20596701846.asia-northeast1.run.app';
+  static const String _prodUrl = 'https://safe-routing-backend-20596701846.asia-northeast1.run.app';
   
   // kDebugModeでDev/Prod切り替え（Release buildは本番URLを使用）
-  static String get _baseUrl => kDebugMode ? _devUrl : _prodUrl;
+  // TODO: デモ撮影後に元に戻すこと → kDebugMode ? _devUrl : _prodUrl;
+  static String get _baseUrl => _prodUrl;
 
   Future<Map<String, dynamic>> findSafeRoute(String origin, String destination) async {
     final url = Uri.parse('$_baseUrl/findSafeRoute');
