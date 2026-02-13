@@ -37,26 +37,4 @@ class MockData {
   
   static const String emergencyModeNarration = 
     "警告。前方に浸水エリアを検知。高台経由のルートに変更しました。直ちに移動を開始してください。";
-  
-  // Thinking Log（モック）
-  static const List<String> normalThinkingLog = [
-    "> Fetching current location...",
-    "> Mode: NORMAL",
-    "> Checking crime statistics...",
-    "> Time: 22:30 - Night mode active",
-    "> Prioritizing well-lit streets",
-    "> Route selected: Safe Score 85/100",
-  ];
-  
-  static const List<String> emergencyThinkingLog = [
-    "> ⚠️ WEATHER ALERT DETECTED: 大雨警報",
-    "> AUTO-SWITCHING TO EMERGENCY MODE",
-    "> Fetching hazard maps...",
-    "> RISK ASSESSMENT: FLOOD HAZARD HIGH",
-    "> Route A: DANGEROUS - crosses flood zone",
-    "> 🔄 Calculating safe waypoint...",
-    "> Waypoint generated: High ground area",
-    "> Route B: SAFE - avoids all hazards",
-    "> Safety Score: 92/100",
-  ];
 }

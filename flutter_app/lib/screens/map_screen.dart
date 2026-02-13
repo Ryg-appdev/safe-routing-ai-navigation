@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -7,7 +8,6 @@ import 'package:geolocator/geolocator.dart';
 import '../providers/theme_provider.dart';
 import '../providers/settings_provider.dart';
 import '../data/mock_data.dart';
-import '../widgets/thinking_log_overlay.dart';
 import '../widgets/mode_toggle_fab.dart';
 import '../widgets/narrative_bottom_sheet.dart';
 import '../widgets/alert_status_banner.dart';
@@ -28,7 +28,6 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateMixin {
-  bool _showThinkingLog = false;
   bool _showNarrative = true; // 最初から表示する
   late AnimationController _pulseController;
   GoogleMapController? _mapController;
@@ -68,7 +67,9 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
   // エージェント進捗ステータス
   Map<String, AgentStatus> _agentStatuses = {};
 
-  
+  // 分析処理をキャンセルするためのフラグ
+  bool _isCancelled = false;
+    
   // 渋谷駅を初期位置に
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(35.6580, 139.7016),
@@ -530,10 +531,8 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
     ref.read(emergencyModeProvider.notifier).toggle();
     _updateMapStyle(nextIsEmergency);
     
-    // モード切替時は Thinking Log を表示しない
-    // ナラティブのみ表示
+    // モード切替時はナラティブを表示
     setState(() {
-      _showThinkingLog = false;
       _showNarrative = true;
     });
     
@@ -554,25 +553,6 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       // 標準スタイル
       _mapController!.setMapStyle(null);
     }
-  }
-  
-  Future<void> _playThinkingLog(bool isEmergency) async {
-    final logs = isEmergency 
-      ? MockData.emergencyThinkingLog 
-      : MockData.normalThinkingLog;
-    
-    for (final log in logs) {
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
-      ref.read(thinkingLogProvider.notifier).add(log);
-    }
-    
-    // ログ完了後、ナラティブ表示
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() {
-      _showNarrative = true;
-    });
   }
   
   /// Thinking Log に1行追加（ディレイ付き）
@@ -757,18 +737,6 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
             },
           ),
           
-          // Thinking Log オーバーレイ（画面下に配置）
-          // ロード中はエージェント進捗表示、そうでなければコンソールログ
-          if (_showThinkingLog && !_showNarrative)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: bottomPadding + 16, // safe area + マージン
-              child: _isLoading
-                ? AgentProgressWidget(agentStatuses: _agentStatuses)
-                : const ThinkingLogOverlay(),
-            ),
-          
           // Mode Badge (Tappable) and Settings Button
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
@@ -902,6 +870,7 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
                           // 出発地 Input
                           TextField(
                             controller: _originController,
+                            enabled: !_isLoading,  // 分析中は入力を無効化
                             style: TextStyle(
                               color: isEmergency ? Colors.white : Colors.black87,
                               fontSize: 16,
@@ -927,6 +896,7 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
                           // 目的地 Input
                           TextField(
                             controller: _destController,
+                            enabled: !_isLoading,  // 分析中は入力を無効化
                             style: TextStyle(
                               color: isEmergency ? Colors.white : Colors.black87,
                               fontSize: 16,
@@ -957,25 +927,17 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
                       width: 50,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleStartNavigation,
+                        onPressed: _isLoading ? null : _handleStartNavigation, // 分析中は無効化
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isEmergency ? Colors.red : Colors.blue,
+                          disabledBackgroundColor: Colors.grey.shade400, // 無効時はグレー
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.arrow_forward, size: 24),
+                        child: const Icon(Icons.arrow_forward, size: 24),
                       ),
                     ),
                   ],
@@ -983,6 +945,53 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
               ),
             ),
           ),
+          
+          // 緊急時用: 避難所へ案内ボタン（緊急モード時のみ、コンパクト版）
+          if (isEmergency && !_isLoading)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 182,
+              left: 16,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _navigateToNearestShelter(context),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade700,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.shade900.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.shield,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          '避難場所へ →',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           
           if (_showNarrative)
             Positioned(
@@ -1014,15 +1023,199 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
             ),
           ),
 
+          // 分析中オーバーレイ（画面全体を薄暗くする）- 最後に描画して全UIの上に表示
+          if (_isLoading)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () {}, // タップを吸収して後ろの操作を防ぐ
+                child: Container(
+                  color: Colors.black.withOpacity(0.5),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ローディングインジケーター
+                        const SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // 分析中テキスト
+                        const Text(
+                          '分析中...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // キャンセルボタン（グレー・控えめ）
+                        TextButton.icon(
+                          onPressed: _cancelAnalysis,
+                          icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                          label: const Text(
+                            'キャンセル',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.grey.shade700,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          
+          // エージェント進捗表示（分析中のみ）- オーバーレイの上に表示
+          if (_isLoading && _agentStatuses.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: bottomPadding + 16, // safe area + マージン
+              child: AgentProgressWidget(agentStatuses: _agentStatuses),
+            ),
+
         ],
       ),
     );
   }
   
+  /// 最寄りの避難所へのナビゲーションを開始
+  Future<void> _navigateToNearestShelter(BuildContext context) async {
+    if (_isLoading) return;
+    HapticFeedback.heavyImpact();
+    
+    // 現在地が必要
+    if (_currentLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('現在地を取得中...しばらくお待ちください'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // 警報種別から災害種別を取得
+      final alertInfo = ref.read(effectiveAlertProvider);
+      final disasterType = _mapAlertToDisasterType(alertInfo);
+      
+      final api = ApiService();
+      final shelters = await api.findNearestShelters(
+        _currentLocation!.latitude,
+        _currentLocation!.longitude,
+        disasterType: disasterType,
+      );
+      
+      if (shelters.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('近くに避難所が見つかりませんでした'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // 最寄りの避難所を目的地に設定
+      final nearest = shelters.first;
+      final shelterName = nearest['name'] as String;
+      final shelterLat = (nearest['lat'] as num).toDouble();
+      final shelterLng = (nearest['lng'] as num).toDouble();
+      final distance = nearest['distance'] as int;
+      
+      setState(() {
+        _destController.text = '🏫 $shelterName (${distance}m)';
+        _destLatLng = LatLng(shelterLat, shelterLng);
+        _originController.text = '現在地';
+        _originLatLng = _currentLocation;
+        _isLoading = false;
+      });
+      
+      // ナビゲーション開始
+      await _handleStartNavigation();
+      
+    } catch (e) {
+      print('⚠️ Shelter navigation error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('避難所検索エラー: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() => _isLoading = false);
+    }
+  }
+  
+  /// 警報タイプを国土地理院の災害種別に変換
+  String? _mapAlertToDisasterType(Map<String, dynamic>? alertInfo) {
+    if (alertInfo == null) return null;
+    
+    final alertType = alertInfo['type'] as String?;
+    final alertTitle = alertInfo['title'] as String?;
+    
+    // 警報タイプまたはタイトルから災害種別を判定
+    if (alertType == 'FLOOD' || alertTitle?.contains('洪水') == true || alertTitle?.contains('大雨') == true) {
+      return '洪水';
+    } else if (alertType == 'TSUNAMI' || alertTitle?.contains('津波') == true) {
+      return '津波';
+    } else if (alertType == 'LANDSLIDE' || alertTitle?.contains('土砂') == true) {
+      return '崖崩れ、土石流及び地滑り';
+    } else if (alertType == 'STORM_SURGE' || alertTitle?.contains('高潮') == true) {
+      return '高潮';
+    } else if (alertType == 'EARTHQUAKE' || alertTitle?.contains('地震') == true) {
+      return '地震';
+    }
+    
+    // 不明な警報タイプの場合はフィルタなし
+    return null;
+  }
+
+  /// 分析処理をキャンセルする
+  void _cancelAnalysis() {
+    if (!_isLoading) return;
+    HapticFeedback.mediumImpact();
+    
+    setState(() {
+      _isCancelled = true;
+      _isLoading = false;
+      _agentStatuses = {};
+      _polylines = {};
+      _markers = {};
+      _analysisPoints.clear();
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🛑 分析をキャンセルしました'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _handleStartNavigation() async {
     if (!mounted || _isLoading) return;
     HapticFeedback.mediumImpact();
     
+    // キャンセルフラグをリセット
+    _isCancelled = false;
     setState(() => _isLoading = true);
 
     // Clear previous results
@@ -1072,10 +1265,9 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
     // Determine current Alert Mode for the API request
     final alertStatus = ref.read(effectiveAlertProvider);
     
-    // Thinking Log を表示開始
+    // ナラティブを非表示にして分析を開始
     ref.read(thinkingLogProvider.notifier).clear();
     setState(() {
-      _showThinkingLog = true;
       _showNarrative = false;
     });
     
@@ -1121,7 +1313,8 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       final testAlert = ref.read(testAlertProvider);
       
       await for (final event in api.findSafeRouteStream(origin, dest, testAlert: testAlert)) {
-        if (!mounted) break;
+        // キャンセルされた場合はループを抜ける
+        if (!mounted || _isCancelled) break;
         
         final type = event['type'];
         
@@ -1299,8 +1492,34 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
         // APIからのナラティブを保存 (finalResultはSSEのresultイベントのdata部分)
         final narrative = finalResult?['narrative'];
         print('[DEBUG] API Narrative: $narrative');
-        if (narrative != null && narrative is String) {
-          _apiNarrative = narrative;
+        if (narrative != null) {
+          // narrativeがMap型の場合（Guardianからの構造化レスポンス）
+          if (narrative is Map) {
+            final text = narrative['text'];
+            if (text != null && text is String) {
+              _apiNarrative = text;
+            }
+          } 
+          // narrativeが文字列の場合
+          else if (narrative is String) {
+            // JSON形式の場合パースを試みる（例: "[{'text': '...', ...}]"）
+            if (narrative.startsWith('[{') || narrative.startsWith('{')) {
+              try {
+                final decoded = jsonDecode(narrative.replaceAll("'", '"'));
+                if (decoded is List && decoded.isNotEmpty) {
+                  _apiNarrative = decoded[0]['text']?.toString() ?? narrative;
+                } else if (decoded is Map) {
+                  _apiNarrative = decoded['text']?.toString() ?? narrative;
+                } else {
+                  _apiNarrative = narrative;
+                }
+              } catch (e) {
+                _apiNarrative = narrative;
+              }
+            } else {
+              _apiNarrative = narrative;
+            }
+          }
         }
         
         // 最終ルートを上書き（候補ルートを消して、確定ルートを表示）
@@ -1316,17 +1535,28 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
           ),
           // もし候補ルートも薄く残したいならここで追加
         };
-        // 分析ポイントマーカーを保持
+        
+        // 選定ルート上の分析ポイントのみマーカーを保持
+        // waypointsには選定ルートのポイント情報が含まれている
+        final Set<String> selectedRouteMarkerIds = {};
+        for (var wp in waypoints) {
+          final lat = (wp['lat'] as num?)?.toDouble();
+          final lng = (wp['lng'] as num?)?.toDouble();
+          if (lat != null && lng != null) {
+            selectedRouteMarkerIds.add('analysis_${lat}_$lng');
+          }
+        }
+        
+        // 選定ルート上のマーカーのみフィルタリング
         final analysisMarkers = _markers.where(
-          (m) => m.markerId.value.startsWith('analysis_')
+          (m) => m.markerId.value.startsWith('analysis_') && 
+                 selectedRouteMarkerIds.contains(m.markerId.value)
         ).toSet();
         
         _markers = {
           originMarker,
           destMarker,
-          // ...riskMarkers, // Removed to avoid duplicates
-          // ...riskMarkers, // Removed to avoid duplicates
-          ...analysisMarkers, // 分析ポイントを保持
+          ...analysisMarkers, // 選定ルート上のポイントのみ保持
         };
       });
 
@@ -1353,7 +1583,6 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
         setState(() {
-          _showThinkingLog = false;
           _showNarrative = true;
         });
       }
@@ -1363,7 +1592,6 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
       await _addThinkingLog('> エラー: $e');
       await Future.delayed(const Duration(seconds: 1));
       setState(() {
-        _showThinkingLog = false;
         _showNarrative = true;
       });
     } finally {
@@ -1399,7 +1627,7 @@ class _MapScreenState extends ConsumerState<MapScreen> with TickerProviderStateM
           CameraPosition(
             target: LatLng(pos.latitude, pos.longitude),
             zoom: 16,
-            tilt: 45,
+            tilt: 0,
           ),
         ),
       );

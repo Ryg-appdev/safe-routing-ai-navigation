@@ -14,7 +14,7 @@ class SentinelAgent:
 
     def __init__(self, client: genai.Client):
         self.client = client
-        self.model_name = "gemini-3-flash-preview" # TODO: Gemini 3 Proが使えるようになったら変更。一旦Flash 2.0 (Reasoning強い)
+        self.model_name = "gemini-3-pro-preview"  # Gemini 3 Pro (推論能力重視)
         
         self.system_instruction = """
 You are "The Sentinel", the central dispatcher for the "Situation-Adaptive Safe Routing System".

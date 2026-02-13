@@ -139,4 +139,33 @@ class ApiService {
     }
     return null;
   }
+  /// 最寄りの避難所を検索
+  /// disasterType: 災害種別（"洪水", "津波", "高潮" など）
+  /// Returns: { "shelters": [...], "count": N }
+  Future<List<Map<String, dynamic>>> findNearestShelters(
+    double lat, 
+    double lng, 
+    {int limit = 3, String? disasterType}
+  ) async {
+    var urlStr = '$_baseUrl/findNearestShelters?lat=$lat&lng=$lng&limit=$limit';
+    if (disasterType != null) {
+      urlStr += '&disaster_type=${Uri.encodeComponent(disasterType)}';
+    }
+    final url = Uri.parse(urlStr);
+    try {
+      print("[API] GET $url");
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final shelters = (data['shelters'] as List)
+            .map((s) => s as Map<String, dynamic>)
+            .toList();
+        print("[API] Found ${shelters.length} shelters (type: $disasterType)");
+        return shelters;
+      }
+    } catch (e) {
+      print("[API] Shelter Error: $e");
+    }
+    return [];
+  }
 }

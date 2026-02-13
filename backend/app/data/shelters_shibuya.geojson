@@ -1,0 +1,188 @@
+{
+    "type": "FeatureCollection",
+    "name": "shelters_shibuya",
+    "source": "渋谷区公式避難所一覧 (https://www.city.shibuya.tokyo.jp)",
+    "updated": "2026-01-05",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "渋谷区役所",
+                "address": "渋谷区宇田川町1-1",
+                "type": "一時避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6967,
+                    35.6640
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "神南小学校",
+                "address": "渋谷区宇田川町5-1",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6981,
+                    35.6648
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "渋谷区スポーツセンター",
+                "address": "渋谷区西原1-40-18",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6802,
+                    35.6719
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "代々木公園",
+                "address": "渋谷区代々木神園町2-1",
+                "type": "広域避難場所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6950,
+                    35.6717
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "鳩森小学校",
+                "address": "渋谷区千駄ヶ谷5-9-1",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.7055,
+                    35.6780
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "千駄谷小学校",
+                "address": "渋谷区千駄ヶ谷2-4-1",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.7098,
+                    35.6810
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "文化総合センター大和田",
+                "address": "渋谷区桜丘町23-21",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6986,
+                    35.6568
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "商工会館・消費者センター",
+                "address": "渋谷区渋谷1-12-5",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.7048,
+                    35.6598
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "加計塚小学校",
+                "address": "渋谷区恵比寿4-21-10",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.7132,
+                    35.6448
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "広尾小学校",
+                "address": "渋谷区東3-3-3",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.7195,
+                    35.6510
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "富谷小学校",
+                "address": "渋谷区上原1-46-4",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6838,
+                    35.6688
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "笹塚小学校",
+                "address": "渋谷区笹塚2-8-1",
+                "type": "指定避難所"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    139.6668,
+                    35.6738
+                ]
+            }
+        }
+    ]
+}

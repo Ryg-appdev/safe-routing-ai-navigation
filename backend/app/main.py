@@ -36,6 +36,7 @@ from models.risk_models import SafetyContext, WeatherInfo, HazardInfo
 # Disaster Alert Service
 from services.disaster_alert_service import disaster_alert_service
 from services.geocode_service import GeocodeService
+from services.shelter_service import get_shelter_service
 
 # Load Environment Variables
 # Local Development: Load from ../.env
@@ -423,12 +424,22 @@ def handle_route_request_stream(request):
                     import concurrent.futures
                     
                     # --- [NEW] 警報情報をNavigatorに渡す（警報連動ハザードチェック用）---
-                    if alert_info and alert_info.get("title"):
-                        # 警報タイトルをactive_alertsに追加
+                    # 緊急モードの判定: should_emergency_modeがTrueの場合のみ
+                    is_real_emergency = (
+                        alert_info 
+                        and alert_info.get("should_emergency_mode") == True 
+                        and alert_info.get("title") 
+                        and "なし" not in alert_info.get("title", "")
+                    )
+                    
+                    if is_real_emergency:
                         navigator.active_alerts = [alert_info.get("title")]
-                        print(f"🚨 [Navigator] Active alerts set: {navigator.active_alerts}", flush=True)
+                        navigator.is_emergency_mode = True
+                        print(f"🚨 [Navigator] Emergency mode ON. Active alerts: {navigator.active_alerts}", flush=True)
                     else:
                         navigator.active_alerts = []
+                        navigator.is_emergency_mode = False
+                        print(f"🔵 [Navigator] Normal mode. No active alerts.", flush=True)
                     
                     analysis_queue = queue.Queue()
                     
@@ -505,7 +516,9 @@ def handle_route_request_stream(request):
                     "destination": destination,
                     "sentinel_instruction": sentinel_plan.get("instruction_to_agent"),
                     "route_found": route_result is not None,
-                    "route_summary": route_result.get("risk_assessment") if route_result else None
+                    "route_summary": route_result.get("risk_assessment") if route_result else None,
+                    "is_emergency_mode": navigator.is_emergency_mode,
+                    "active_alerts": navigator.active_alerts
                 }
             )
             trace_log.append({"agent": "Guardian", "output": guardian_response})
@@ -609,6 +622,35 @@ if __name__ == "__main__":
     @app.route("/reverseGeocode", methods=["GET"])
     def route_reverse_geocode():
         return handle_reverse_geocode(request)
+    
+    @app.route("/findNearestShelters", methods=["GET"])
+    def route_find_shelters():
+        """
+        最寄りの避難所を検索
+        GET /findNearestShelters?lat=35.6640&lng=139.6967&limit=3&disaster_type=津波
+        """
+        try:
+            lat = float(request.args.get("lat", 0))
+            lng = float(request.args.get("lng", 0))
+            limit = int(request.args.get("limit", 3))
+            disaster_type = request.args.get("disaster_type")  # 災害種別（任意）
+            
+            if lat == 0 or lng == 0:
+                return jsonify({"error": "lat and lng are required"}), 400
+            
+            shelter_service = get_shelter_service()
+            shelters = shelter_service.find_nearest(lat, lng, disaster_type=disaster_type, limit=limit)
+            
+            return jsonify({
+                "shelters": shelters,
+                "count": len(shelters),
+                "disaster_type": disaster_type
+            })
+        except ValueError as e:
+            return jsonify({"error": f"Invalid parameter: {e}"}), 400
+        except Exception as e:
+            print(f"⚠️ Shelter search error: {e}", flush=True)
+            return jsonify({"error": str(e)}), 500
         
     # debug=True, threaded=True でストリーミングをサポート
     # Cloud Run対応: PORT環境変数から取得

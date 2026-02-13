@@ -34,10 +34,10 @@ class NavigatorAgent:
         self.client = client
         self.model_name = "gemini-3-flash-preview"
         self.tools = []
-        self.elevation_service = None
         # アクティブな警報一覧（ハザードチェックの条件に使用）
         self.active_alerts: List[str] = []
-
+        # 緊急モードフラグ（通常モードと評価項目を分ける）
+        self.is_emergency_mode: bool = False
 
         # Initialize Google Maps Client
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
@@ -48,13 +48,6 @@ class NavigatorAgent:
             import googlemaps
             self.gmaps = googlemaps.Client(key=api_key)
             
-            # Initialize Services
-            try:
-                from services.elevation_service import ElevationService
-                self.elevation_service = ElevationService(self.gmaps)
-            except Exception as e:
-                print(f"⚠️ Failed to init ElevationService: {e}")
-                
             # Initialize Analyst (Visual Vibe Check)
             try:
                 from agents.analyst import AnalystAgent
@@ -105,11 +98,6 @@ class NavigatorAgent:
             except Exception as e:
                 print(f"⚠️ Failed to init LandslideService: {e}")
                 self.landslide_service = None
-
-            # Crime Service disabled - using Vision AI + Places API instead
-            # Mock data was removed as it provided false information.
-            # Future: integrate real crime statistics when available nationwide.
-            self.crime_service = None
 
     async def find_safest_route(self, origin: str, destination: str, risk_preferences: List[str]) -> Dict[str, Any]:
         """
@@ -253,22 +241,14 @@ class NavigatorAgent:
         saved_count = original_count - unique_count
         print(f"📊 [Navigator] Points: {original_count} total → {unique_count} unique (saved {saved_count} analyses)", flush=True)
         
-        # Step 3: ユニークポイントの標高を一括取得
-        elevations = []
-        if self.elevation_service:
-            print("⛰️ [Navigator] Fetching elevation data (Batch)...", flush=True)
-            elevations = self.elevation_service.get_elevations(unique_point_list)
-        else:
-            elevations = [0.0] * unique_count
-        
-        # Step 4: ユニークポイントを並列分析
+        # Step 3: ユニークポイントを並列分析
         print(f"🔍 [Navigator] Analyzing {unique_count} unique points...", flush=True)
         
         # 分析結果キャッシュ
         results_cache = {}  # key -> result
         
-        async def analyze_with_callback(i, point, elevation):
-            result = await self._analyze_single_point(i, point, elevation)
+        async def analyze_with_callback(i, point):
+            result = await self._analyze_single_point(i, point)
             if on_progress:
                 try:
                     on_progress(result)
@@ -278,8 +258,7 @@ class NavigatorAgent:
         
         tasks = []
         for i, point in enumerate(unique_point_list):
-            elevation = elevations[i]
-            tasks.append(analyze_with_callback(i, point, elevation))
+            tasks.append(analyze_with_callback(i, point))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -359,21 +338,12 @@ class NavigatorAgent:
         sampled_points = self._resample_path(path_points, interval_meters=self.SAMPLING_INTERVAL_METERS)
         
         # 3. Scan -> 各ポイントのリスク評価 (並列実行)
-        # 標高データの一括取得 (Batch API Call)
-        elevations = []
-        if self.elevation_service:
-            print("⛰️ [Navigator] Fetching elevation data (Batch)...", flush=True)
-            elevations = self.elevation_service.get_elevations(sampled_points)
-        else:
-            elevations = [0.0] * len(sampled_points)
- 
-        # 全ポイントの並列処理タスクを作成
         tasks = []
         print(f"🚀 [Navigator] Starting parallel analysis for {len(sampled_points)} points...", flush=True)
 
         # ラッパー関数: 分析完了時にコールバックを呼ぶ
-        async def analyze_wrapper(i, point, elevation):
-            result = await self._analyze_single_point(i, point, elevation)
+        async def analyze_wrapper(i, point):
+            result = await self._analyze_single_point(i, point)
             if on_progress:
                 try:
                     # コールバックは同期関数の想定 (Queue.putなど)
@@ -383,10 +353,7 @@ class NavigatorAgent:
             return result
 
         for i, point in enumerate(sampled_points):
-            # Process each point concurrently
-            elevation = elevations[i]
-            # task = self._analyze_single_point(i, point, elevation)
-            task = analyze_wrapper(i, point, elevation)
+            task = analyze_wrapper(i, point)
             tasks.append(task)
         
         # Run all tasks in parallel
@@ -417,92 +384,78 @@ class NavigatorAgent:
             "risk_factors": list(set([r for d in details for r in d["risks"]]))
         }
 
-    async def _analyze_single_point(self, index: int, point: Dict[str, float], elevation: float) -> Dict[str, Any]:
+    async def _analyze_single_point(self, index: int, point: Dict[str, float]) -> Dict[str, Any]:
         """
         単一地点のリスク評価を行う (並列実行用)
-        Network I/Oを含む重い処理 (Vision, Solar, Places) を非同期/スレッドで実行する
+        モードによって評価項目が異なる:
+        - 通常モード: Vision AI, Solar, Places
+        - 緊急モード: ハザードマップのみ
         """
         current_risks = []
-        current_risks = []
         point_score = 100.0
-
-        # --- 0. Crime Risk (Normal Mode Base) ---
-        if hasattr(self, 'crime_service') and self.crime_service:
-            is_crime_risk, crime_details = self.crime_service.check_crime_risk(point["lat"], point["lng"])
-            if is_crime_risk:
-                print(f"🚨 [Navigator] Crime Risk Detected at ({point['lat']:.4f}, {point['lng']:.4f}): {crime_details['description']}", flush=True)
-                point_score -= crime_details["penalty"]
-                current_risks.append(crime_details["description"])
-
-        # --- 1. Elevation / Flood Risk (Already fetched, fast CPU calc) ---
-        if self.elevation_service:
-            deduction, label = self.elevation_service.evaluate_flood_risk(elevation)
-            if deduction > 0:
-                point_score -= deduction
-                current_risks.append(f"FLOOD_RISK: {label} ({elevation:.1f}m)")
-
-        # --- 2. Visual Vibe Check (Analyst Agent) - IO Bound ---
         image_url = None
         atmosphere = None
-        if self.analyst:
-            # Run blocking synchronous code in a separate thread
-            try:
-                loop = asyncio.get_running_loop()
-                vibe_result = await loop.run_in_executor(
-                    None, 
-                    self.analyst.analyze_location_vibe, 
-                    point["lat"], 
-                    point["lng"]
-                )
-                
-                vibe_score = vibe_result.get("safety_score", 50)
-                atmosphere = vibe_result.get("atmosphere", "Unknown")
-                image_url = vibe_result.get("image_url", None)
-                
-                # Debug log to confirm Vision AI is working
-                print(f"👁️ [Analyst] Point {index}: Score={vibe_score}, Vibe='{atmosphere}'", flush=True)
-                
-                vibe_penalty = (100 - vibe_score) * 0.2
-                if vibe_penalty > 0:
-                    point_score -= vibe_penalty
-                    current_risks.append(f"VIBE_RISK: {atmosphere}")
-            except Exception as e:
-                print(f"⚠️ Point {index} Vision Error: {e}")
 
-        # --- 3. Physical & Social Safety (Solar & Places) - IO Bound ---
-        
-        # B. Solar (Shadow/Darkness)
-        if self.solar_service:
-            try:
-                loop = asyncio.get_running_loop()
-                solar_deduction, solar_label = await loop.run_in_executor(
-                    None,
-                    self.solar_service.evaluate_darkness_risk,
-                    point["lat"],
-                    point["lng"]
-                )
-                if solar_deduction > 0:
-                    point_score -= solar_deduction
-                    current_risks.append(f"SHADOW_RISK: {solar_label}")
-            except Exception as e:
-                print(f"⚠️ Point {index} Solar Error: {e}")
+        # ========================================
+        # 通常モード専用の評価項目
+        # ========================================
+        if not self.is_emergency_mode:
+            # --- 1. Visual Vibe Check (Analyst Agent) ---
+            if self.analyst:
+                try:
+                    loop = asyncio.get_running_loop()
+                    vibe_result = await loop.run_in_executor(
+                        None, 
+                        self.analyst.analyze_location_vibe, 
+                        point["lat"], 
+                        point["lng"]
+                    )
+                    
+                    vibe_score = vibe_result.get("safety_score", 50)
+                    atmosphere = vibe_result.get("atmosphere", "Unknown")
+                    image_url = vibe_result.get("image_url", None)
+                    
+                    print(f"👁️ [Analyst] Point {index}: Score={vibe_score}, Vibe='{atmosphere}'", flush=True)
+                    
+                    vibe_penalty = (100 - vibe_score) * 0.2
+                    if vibe_penalty > 0:
+                        point_score -= vibe_penalty
+                        current_risks.append(f"VIBE_RISK: {atmosphere}")
+                except Exception as e:
+                    print(f"⚠️ Point {index} Vision Error: {e}")
 
-        # C. Places (Safety Spots)
-        if self.places_service:
-            try:
-                loop = asyncio.get_running_loop()
-                bonus, spot_details = await loop.run_in_executor(
-                    None,
-                    self.places_service.evaluate_safety_bonus,
-                    point["lat"],
-                    point["lng"]
-                )
-                if bonus > 0:
-                    point_score += bonus
-                    for d in spot_details:
-                        current_risks.append(f"SAFETY_BONUS: {d}")
-            except Exception as e:
-                print(f"⚠️ Point {index} Places Error: {e}")
+            # --- 2. Solar (Shadow/Darkness) ---
+            if self.solar_service:
+                try:
+                    loop = asyncio.get_running_loop()
+                    solar_deduction, solar_label = await loop.run_in_executor(
+                        None,
+                        self.solar_service.evaluate_darkness_risk,
+                        point["lat"],
+                        point["lng"]
+                    )
+                    if solar_deduction > 0:
+                        point_score -= solar_deduction
+                        current_risks.append(f"SHADOW_RISK: {solar_label}")
+                except Exception as e:
+                    print(f"⚠️ Point {index} Solar Error: {e}")
+
+            # --- 3. Places (Safety Spots) ---
+            if self.places_service:
+                try:
+                    loop = asyncio.get_running_loop()
+                    bonus, spot_details = await loop.run_in_executor(
+                        None,
+                        self.places_service.evaluate_safety_bonus,
+                        point["lat"],
+                        point["lng"]
+                    )
+                    if bonus > 0:
+                        point_score += bonus
+                        for d in spot_details:
+                            current_risks.append(f"SAFETY_BONUS: {d}")
+                except Exception as e:
+                    print(f"⚠️ Point {index} Places Error: {e}")
 
         # --- 4. Hazard Map Checks (Flood, Tsunami, Landslide) - Async IO ---
         # 警報が発令されている場合のみ、該当するハザードマップをチェック
@@ -578,7 +531,7 @@ class NavigatorAgent:
         return {
             "lat": point["lat"],
             "lng": point["lng"],
-            "elevation": elevation,
+
             "score": point_score,
             "risks": current_risks,
             "image_url": image_url,

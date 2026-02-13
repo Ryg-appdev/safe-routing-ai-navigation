@@ -54,6 +54,45 @@ class AnalysisPointDetailSheet extends StatelessWidget {
     return '⚠️ $risk';
   }
 
+  /// リスク文字列から絵文字を取得
+  String _getEmojiFromRisk(String risk) {
+    if (risk.startsWith('FLOOD_RISK:')) return '🌊';
+    if (risk.startsWith('VIBE_RISK:')) return '👁️';
+    if (risk.startsWith('SHADOW_RISK:')) return '🌙';
+    if (risk.startsWith('SAFETY_BONUS:')) return '✅';
+    if (risk.startsWith('FLOOD_HAZARD:')) return '🌊';
+    if (risk.startsWith('TSUNAMI_HAZARD:')) return '🌊';
+    if (risk.startsWith('LANDSLIDE_HAZARD:')) return '⛰️';
+    return '⚠️';
+  }
+
+  /// リスク文字列からテキスト部分を取得
+  String _getTextFromRisk(String risk) {
+    if (risk.startsWith('FLOOD_RISK:')) {
+      return '低地のため浸水リスクがあります';
+    }
+    if (risk.startsWith('VIBE_RISK:')) {
+      return risk.replaceFirst('VIBE_RISK:', '').trim();
+    }
+    if (risk.startsWith('SHADOW_RISK:')) {
+      return '夜間は暗い通りです';
+    }
+    if (risk.startsWith('SAFETY_BONUS:')) {
+      final detail = risk.replaceFirst('SAFETY_BONUS:', '').trim();
+      return '安全スポット: $detail';
+    }
+    if (risk.startsWith('FLOOD_HAZARD:')) {
+      return risk.replaceFirst('FLOOD_HAZARD:', '').trim();
+    }
+    if (risk.startsWith('TSUNAMI_HAZARD:')) {
+      return risk.replaceFirst('TSUNAMI_HAZARD:', '').trim();
+    }
+    if (risk.startsWith('LANDSLIDE_HAZARD:')) {
+      return risk.replaceFirst('LANDSLIDE_HAZARD:', '').trim();
+    }
+    return risk;
+  }
+
   /// リスクがプラス要因（ボーナス）かどうか
   bool _isBonus(String risk) {
     return risk.startsWith('SAFETY_BONUS:');
@@ -206,8 +245,9 @@ class AnalysisPointDetailSheet extends StatelessWidget {
           // ===== 雰囲気（atmosphereから直接表示） =====
           if (atmosphere != null && atmosphere!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('🌆', style: TextStyle(fontSize: 18)),
                   const SizedBox(width: 8),
@@ -224,24 +264,42 @@ class AnalysisPointDetailSheet extends StatelessWidget {
           // リスク要因リスト
           if (riskItems.isNotEmpty || bonusItems.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // リスク要因 (VIBE_RISKを除く、atmosphereで表示済み)
                   ...riskItems.where((r) => !r.startsWith('VIBE_RISK:')).map((risk) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _translateRisk(risk),
-                      style: const TextStyle(fontSize: 14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_getEmojiFromRisk(risk), style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _getTextFromRisk(risk),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ],
                     ),
                   )),
                   // ボーナス要因
                   ...bonusItems.map((risk) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _translateRisk(risk),
-                      style: TextStyle(fontSize: 14, color: Colors.green[700]),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_getEmojiFromRisk(risk), style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _getTextFromRisk(risk),
+                            style: TextStyle(fontSize: 14, color: Colors.green[700]),
+                          ),
+                        ),
+                      ],
                     ),
                   )),
                 ],

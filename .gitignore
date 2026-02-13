@@ -22,6 +22,10 @@ build/
 *.swo
 .vscode/settings.json
 
+# AI Agent
+.agent/
+.gemini/
+
 # OS
 .DS_Store
 Thumbs.db
