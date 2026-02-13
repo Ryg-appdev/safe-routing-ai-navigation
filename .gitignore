@@ -10,6 +10,7 @@ node_modules/
 # API Keys (iOS)
 ios/**/GoogleService-Info.plist
 ios/**/Secrets.xcconfig
+**/Secrets.xcconfig
 
 # Build outputs
 dist/
