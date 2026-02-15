@@ -1,15 +1,9 @@
 from typing import Dict, Any, List
 from google import genai
 from google.genai import types
-from google.genai import types
 import json
 import asyncio
 import os
-
-# TODO: 実際のAPIクライアントをimportする
-# from ..services.routes_service import RoutesService
-# from ..services.solar_service import SolarService
-# from ..services.places_service import PlacesService
 
 class NavigatorAgent:
     """

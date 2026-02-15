@@ -34,21 +34,15 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _buildServiceTile(
             icon: Icons.auto_awesome,
-            title: 'Google Cloud / Vertex AI',
-            subtitle: 'Gemini APIによるAIナビゲーション',
-            url: 'https://cloud.google.com/vertex-ai',
+            title: 'Google Cloud / Gemini API',
+            subtitle: 'Gemini 3 Pro / Flashによるマルチエージェント',
+            url: 'https://ai.google.dev/',
           ),
           _buildServiceTile(
             icon: Icons.cloud,
-            title: 'OpenWeatherMap',
-            subtitle: '気象データAPI',
-            url: 'https://openweathermap.org/',
-          ),
-          _buildServiceTile(
-            icon: Icons.local_police,
-            title: '警視庁',
-            subtitle: '犯罪情報オープンデータ',
-            url: 'https://www.keishicho.metro.tokyo.lg.jp/about_mpd/joho_kokai/opendata/',
+            title: '気象庁',
+            subtitle: '防災気象情報',
+            url: 'https://www.jma.go.jp/bosai/',
           ),
           _buildServiceTile(
             icon: Icons.warning_amber,
