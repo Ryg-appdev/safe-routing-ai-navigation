@@ -87,11 +87,6 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('バージョン'),
             subtitle: Text('1.0.0'),
           ),
-          const ListTile(
-            leading: Icon(Icons.code),
-            title: Text('開発'),
-            subtitle: Text('AI Hackathon Team'),
-          ),
           
           const SizedBox(height: 32),
         ],
